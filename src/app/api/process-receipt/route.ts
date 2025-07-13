@@ -19,17 +19,57 @@ async function processFileFromWhatsApp(
   
   try {
     console.log('📁 Procesando archivo desde WhatsApp...');
+    console.log('📄 Tipo de fileData recibido:', typeof fileData);
+    console.log('📄 FileData keys:', fileData ? Object.keys(fileData) : 'null');
     
     // Paso 1: Crear File object desde los datos de WhatsApp
     if (controller) {
       controller.enqueue(encoder.encode(createSSEEvent({ step: 'file_preparation', message: 'Preparando archivo...' })));
     }
     
-    // Convertir los datos de WhatsApp a un File object
-    const buffer = Buffer.from(fileData, 'base64');
-    const file = new File([buffer], 'receipt.jpg', { type: 'image/jpeg' });
+    let buffer: Buffer;
+    let filename = 'receipt.jpg';
+    let mimeType = 'image/jpeg';
     
-    console.log('📄 Archivo creado:', file.name, file.size, 'bytes');
+    // Detectar el tipo de datos recibidos
+    if (typeof fileData === 'string') {
+      // Caso 1: String base64 directo
+      console.log('📄 Procesando como base64 string');
+      buffer = Buffer.from(fileData, 'base64');
+    } else if (fileData && fileData.data && typeof fileData.data === 'string') {
+      // Caso 2: Objeto con propiedad data que contiene base64
+      console.log('📄 Procesando como objeto con data base64');
+      buffer = Buffer.from(fileData.data, 'base64');
+      if (fileData.mimeType) mimeType = fileData.mimeType;
+      if (fileData.fileName) filename = fileData.fileName;
+    } else if (fileData && fileData.mimeType && fileData.fileType) {
+      // Caso 3: Objeto binario de n8n (necesitamos la URL para descargarlo)
+      console.log('📄 Procesando como objeto binario de n8n');
+      
+      // Si no hay data directa, intentar buscar en otras propiedades
+      if (fileData.data) {
+        if (Buffer.isBuffer(fileData.data)) {
+          buffer = fileData.data;
+        } else if (typeof fileData.data === 'string') {
+          buffer = Buffer.from(fileData.data, 'base64');
+        } else {
+          throw new Error('Formato de datos binarios no reconocido');
+        }
+      } else {
+        throw new Error('No se encontraron datos binarios en el objeto');
+      }
+      
+      mimeType = fileData.mimeType || 'image/jpeg';
+      filename = fileData.fileName || 'receipt.jpg';
+    } else {
+      console.error('❌ Formato de fileData no reconocido:', fileData);
+      throw new Error('Formato de archivo no válido');
+    }
+    
+    // Crear File object
+    const file = new File([buffer], filename, { type: mimeType });
+    
+    console.log('📄 Archivo creado:', file.name, file.size, 'bytes', file.type);
     
     // Paso 2: Procesar con Mindee
     if (controller) {
@@ -134,7 +174,12 @@ async function processFileFromWhatsApp(
         integration_status: 'whatsapp_processed',
         whatsapp_data: {
           phone: additionalData.phone,
-          processed_at: new Date().toISOString()
+          processed_at: new Date().toISOString(),
+          file_info: {
+            filename,
+            mimeType,
+            size: buffer.length
+          }
         }
       }
     };
