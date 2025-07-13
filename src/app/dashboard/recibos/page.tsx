@@ -443,40 +443,21 @@ export default function RecibosPage() {
 
   const handleDownload = useCallback(async (receiptId: string, numeroFactura: string) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      // Abrir el PDF directamente usando nuestro endpoint de descarga
+      const downloadUrl = `/api/pdf-download?receipt_id=${receiptId}`;
       
-      if (!session?.access_token) {
-        throw new Error('No se pudo obtener el token de autenticación');
-      }
-
-      const response = await fetch(`/api/pdf-factura?receipt_id=${receiptId}`, {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-        }
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Error al obtener el PDF');
-      }
-
-      const data = await response.json();
-      
-      if (data.success && data.download_url) {
-        // Crear un enlace de descarga directo
-        const link = document.createElement('a');
-        link.href = data.download_url;
-        link.download = `factura_${numeroFactura.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } else {
-        throw new Error('No se pudo obtener la URL de descarga');
-      }
+      // Crear un enlace de descarga directo
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `factura_${numeroFactura.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     } catch (error) {
       console.error('Error downloading PDF:', error);
+      setError('Error al descargar el PDF. Por favor, intenta de nuevo.');
       // Solo mostrar error si es necesario, no interrumpir la experiencia del usuario
       console.warn('Error al descargar el PDF:', error instanceof Error ? error.message : 'Error desconocido');
     }

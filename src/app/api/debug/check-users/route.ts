@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabaseClient';
+import { supabaseService } from '@/utils/supabaseClient';
 
 export async function GET() {
   try {
+    // Crear cliente con service role para tener permisos completos
+    const supabase = supabaseService();
+
     // Obtener todos los usuarios con sus números de teléfono
     const { data: profiles, error } = await supabase
       .from('profiles')
