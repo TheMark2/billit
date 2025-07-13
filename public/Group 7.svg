@@ -1,0 +1,64 @@
+<svg width="546" height="411" viewBox="0 0 546 411" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="1.5" y="1.5" width="543" height="408" rx="35.5" fill="#F3F2F2" stroke="#E1E0E0" stroke-width="3"/>
+<rect x="3" y="55" width="540" height="45" fill="white"/>
+<mask id="path-3-inside-1_8_71" fill="white">
+<path d="M3 100H543V145H3V100Z"/>
+</mask>
+<path d="M3 100H543V145H3V100Z" fill="white"/>
+<path d="M3 100V101H543V100V99H3V100Z" fill="#DADADA" mask="url(#path-3-inside-1_8_71)"/>
+<rect x="18" y="67" width="21" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="18" y="112" width="21" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="57" y="67" width="57" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="57" y="112" width="57" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="148" y="67" width="57" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="148" y="112" width="57" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="239" y="67" width="273" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="239" y="112" width="273" height="21" rx="10.5" fill="#EEEEEE"/>
+<mask id="path-13-inside-2_8_71" fill="white">
+<path d="M3 145H543V190H3V145Z"/>
+</mask>
+<path d="M3 145H543V190H3V145Z" fill="white" fill-opacity="0.75"/>
+<path d="M3 145V146H543V145V144H3V145Z" fill="#DADADA" mask="url(#path-13-inside-2_8_71)"/>
+<rect x="18" y="157" width="21" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="57" y="157" width="57" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="148" y="157" width="57" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="239" y="157" width="273" height="21" rx="10.5" fill="#EEEEEE"/>
+<mask id="path-19-inside-3_8_71" fill="white">
+<path d="M3 190H543V235H3V190Z"/>
+</mask>
+<path d="M3 190H543V235H3V190Z" fill="white" fill-opacity="0.5"/>
+<path d="M3 190V191H543V190V189H3V190Z" fill="#DADADA" mask="url(#path-19-inside-3_8_71)"/>
+<rect x="18" y="202" width="21" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="57" y="202" width="57" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="148" y="202" width="57" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="239" y="202" width="273" height="21" rx="10.5" fill="#EEEEEE"/>
+<mask id="path-25-inside-4_8_71" fill="white">
+<path d="M3 235H543V280H3V235Z"/>
+</mask>
+<path d="M3 235H543V280H3V235Z" fill="white" fill-opacity="0.16"/>
+<path d="M3 235V236H543V235V234H3V235Z" fill="#DADADA" mask="url(#path-25-inside-4_8_71)"/>
+<rect x="18" y="247" width="21" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="57" y="247" width="57" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="148" y="247" width="57" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="239" y="247" width="273" height="21" rx="10.5" fill="#EEEEEE"/>
+<mask id="path-31-inside-5_8_71" fill="white">
+<path d="M3 280H543V325H3V280Z"/>
+</mask>
+<path d="M3 280H543V325H3V280Z" fill="white" fill-opacity="0.02"/>
+<path d="M3 280V281H543V280V279H3V280Z" fill="#DADADA" mask="url(#path-31-inside-5_8_71)"/>
+<rect x="18" y="292" width="21" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="57" y="292" width="57" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="148" y="292" width="57" height="21" rx="10.5" fill="#EEEEEE"/>
+<rect x="239" y="292" width="273" height="21" rx="10.5" fill="#EEEEEE"/>
+<mask id="path-37-inside-6_8_71" fill="white">
+<path d="M3 325H543V370H3V325Z"/>
+</mask>
+<path d="M3 325H543V370H3V325Z" fill="white" fill-opacity="0.01"/>
+<path d="M3 325V326H543V325V324H3V325Z" fill="#DADADA" fill-opacity="0.38" mask="url(#path-37-inside-6_8_71)"/>
+<rect x="18" y="337" width="21" height="21" rx="10.5" fill="#EEEEEE" fill-opacity="0.73"/>
+<rect x="57" y="337" width="57" height="21" rx="10.5" fill="#EEEEEE" fill-opacity="0.73"/>
+<rect x="148" y="337" width="57" height="21" rx="10.5" fill="#EEEEEE" fill-opacity="0.73"/>
+<rect x="239" y="337" width="273" height="21" rx="10.5" fill="#EEEEEE" fill-opacity="0.73"/>
+<circle cx="273" cy="205" r="57" fill="#E7F6FF" stroke="#0099FF" stroke-width="4" stroke-dasharray="8 8"/>
+<path d="M270.072 226.992V183.792H275.544V226.992H270.072ZM251.16 208.176V202.704H294.36V208.176H251.16Z" fill="#0099FF"/>
+</svg>
