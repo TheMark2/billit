@@ -10,15 +10,48 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Phone number is required' }, { status: 400 });
     }
 
-    // Buscar el usuario por número de teléfono
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, empresa_id')
-      .eq('phone', phone)
-      .single();
+    // Intentar diferentes formatos del número
+    const phoneFormats = [
+      phone, // Formato original
+      `+34${phone}`, // Añadir +34
+      phone.replace('+34', ''), // Quitar +34
+      `+${phone}`, // Añadir +
+      phone.replace('+', '') // Quitar +
+    ];
 
-    if (profileError || !profile) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    let profile = null;
+    let foundWithFormat = '';
+
+    // Buscar el usuario con diferentes formatos
+    for (const phoneFormat of phoneFormats) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, empresa_id, phone')
+        .eq('phone', phoneFormat)
+        .single();
+
+      if (!error && data) {
+        profile = data;
+        foundWithFormat = phoneFormat;
+        break;
+      }
+    }
+
+    if (!profile) {
+      // Debug: mostrar todos los números de teléfono en la base de datos
+      const { data: allProfiles } = await supabase
+        .from('profiles')
+        .select('phone')
+        .limit(5);
+
+      return NextResponse.json({ 
+        error: 'User not found',
+        debug: {
+          searchedPhone: phone,
+          searchedFormats: phoneFormats,
+          samplePhones: allProfiles?.map(p => p.phone) || []
+        }
+      }, { status: 404 });
     }
 
     // Obtener las integraciones activas del usuario
@@ -77,6 +110,7 @@ export async function GET(request: NextRequest) {
       user_id: profile.id,
       empresa_id: profile.empresa_id,
       phone: phone,
+      found_with_format: foundWithFormat,
       integraciones: integraciones,
       total_integraciones: integraciones.length
     });
