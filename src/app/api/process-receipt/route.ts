@@ -20,7 +20,7 @@ async function processFileFromWhatsApp(
   try {
     console.log('📁 Procesando archivo desde WhatsApp...');
     console.log('📄 Tipo de fileData recibido:', typeof fileData);
-    console.log('📄 FileData keys:', fileData ? Object.keys(fileData) : 'null');
+    console.log('📄 FileData:', fileData);
     
     // Paso 1: Crear File object desde los datos de WhatsApp
     if (controller) {
@@ -32,18 +32,47 @@ async function processFileFromWhatsApp(
     let mimeType = 'image/jpeg';
     
     // Detectar el tipo de datos recibidos
-    if (typeof fileData === 'string') {
-      // Caso 1: String base64 directo
+    if (typeof fileData === 'string' && (fileData.startsWith('http://') || fileData.startsWith('https://'))) {
+      // Caso 1: URL directa - descargar archivo
+      console.log('📄 Procesando como URL - descargando archivo...');
+      
+      if (controller) {
+        controller.enqueue(encoder.encode(createSSEEvent({ step: 'download', message: 'Descargando archivo desde WhatsApp...' })));
+      }
+      
+      const response = await fetch(fileData);
+      
+      if (!response.ok) {
+        throw new Error(`Error descargando archivo: ${response.status} ${response.statusText}`);
+      }
+      
+      buffer = Buffer.from(await response.arrayBuffer());
+      
+      // Intentar extraer filename de la URL o headers
+      const contentDisposition = response.headers.get('content-disposition');
+      if (contentDisposition && contentDisposition.includes('filename=')) {
+        const matches = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (matches) filename = matches[1];
+      }
+      
+      // Extraer mimeType de headers
+      const contentType = response.headers.get('content-type');
+      if (contentType) mimeType = contentType;
+      
+      console.log('📄 Archivo descargado:', buffer.length, 'bytes, tipo:', mimeType);
+      
+    } else if (typeof fileData === 'string') {
+      // Caso 2: String base64 directo
       console.log('📄 Procesando como base64 string');
       buffer = Buffer.from(fileData, 'base64');
     } else if (fileData && fileData.data && typeof fileData.data === 'string') {
-      // Caso 2: Objeto con propiedad data que contiene base64
+      // Caso 3: Objeto con propiedad data que contiene base64
       console.log('📄 Procesando como objeto con data base64');
       buffer = Buffer.from(fileData.data, 'base64');
       if (fileData.mimeType) mimeType = fileData.mimeType;
       if (fileData.fileName) filename = fileData.fileName;
     } else if (fileData && fileData.mimeType && fileData.fileType) {
-      // Caso 3: Objeto binario de n8n (necesitamos la URL para descargarlo)
+      // Caso 4: Objeto binario de n8n (necesitamos la URL para descargarlo)
       console.log('📄 Procesando como objeto binario de n8n');
       
       // Si no hay data directa, intentar buscar en otras propiedades
@@ -63,7 +92,12 @@ async function processFileFromWhatsApp(
       filename = fileData.fileName || 'receipt.jpg';
     } else {
       console.error('❌ Formato de fileData no reconocido:', fileData);
-      throw new Error('Formato de archivo no válido');
+      throw new Error('Formato de archivo no válido. Envía una URL, base64 string, o objeto con datos binarios.');
+    }
+    
+    // Validar que tenemos datos
+    if (!buffer || buffer.length === 0) {
+      throw new Error('El archivo está vacío o no se pudo procesar');
     }
     
     // Crear File object
@@ -178,7 +212,8 @@ async function processFileFromWhatsApp(
           file_info: {
             filename,
             mimeType,
-            size: buffer.length
+            size: buffer.length,
+            original_url: typeof fileData === 'string' && fileData.startsWith('http') ? fileData : null
           }
         }
       }
