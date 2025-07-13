@@ -448,7 +448,7 @@ export async function POST(request: NextRequest) {
 }
 
 // Función para procesar factura con Mindee
-async function processWithMindee(file: File): Promise<{
+export async function processWithMindee(file: File): Promise<{
   success: boolean;
   data?: any;
   error?: string;
@@ -758,7 +758,7 @@ function extractPaymentMethod(paymentDetails: any[]): string {
 }
 
 // OPTIMIZACIÓN: Función para obtener todas las credenciales en paralelo
-async function getAllCredentials(userId: string): Promise<{
+export async function getAllCredentials(userId: string): Promise<{
   odoo: any | null;
   holded: any | null;
 }> {
@@ -828,7 +828,7 @@ async function getAllCredentials(userId: string): Promise<{
 }
 
 // Función optimizada para enviar datos a Holded
-async function sendToHolded(mindeeData: any, credentials: any): Promise<{
+export async function sendToHolded(mindeeData: any, credentials: any): Promise<{
   success: boolean;
   data?: any;
   error?: string;
@@ -1130,7 +1130,7 @@ async function findTaxId(rate: number, credentials: any, odooUserId: string): Pr
 }
 
 // Función optimizada para enviar datos a Odoo
-async function sendToOdoo(mindeeData: any, credentials: any): Promise<{
+export async function sendToOdoo(mindeeData: any, credentials: any): Promise<{
   success: boolean;
   data?: any;
   error?: string;

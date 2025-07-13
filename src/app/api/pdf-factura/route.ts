@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { generatePdfWithApiTemplate } from '@/app/api/upload-receipt/route';
 
 export async function GET(request: NextRequest) {
   try {
@@ -63,22 +64,79 @@ export async function GET(request: NextRequest) {
     }
 
     // Verificar si existe el PDF generado en los metadatos
-    const pdfGeneration = receipt.metadatos?.pdf_generation;
+    let pdfGeneration = receipt.metadatos?.pdf_generation;
     
     if (!pdfGeneration || !pdfGeneration.download_url) {
-      return NextResponse.json(
-        { error: 'PDF no disponible para este recibo' },
-        { status: 404 }
-      );
+      // Si no existe el PDF, intentar generarlo on-demand
+      console.log('PDF no encontrado en metadatos, generando on-demand...');
+      
+      // Verificar si tenemos los datos necesarios para generar el PDF
+      let mindeeData = null;
+      
+      if (receipt.metadatos?.mindee_data) {
+        mindeeData = receipt.metadatos.mindee_data;
+      } else if (receipt.texto_extraido) {
+        // Intentar parsear el texto extraído
+        try {
+          mindeeData = JSON.parse(receipt.texto_extraido);
+        } catch (parseError) {
+          console.error('Error parsing texto_extraido:', parseError);
+        }
+      }
+      
+      if (!mindeeData) {
+        return NextResponse.json(
+          { error: 'No hay datos suficientes para generar el PDF. Este recibo fue procesado antes de la implementación de PDF.' },
+          { status: 404 }
+        );
+      }
+      
+      // Generar el PDF
+      const pdfResult = await generatePdfWithApiTemplate(mindeeData, user.id);
+      
+      if (!pdfResult.success) {
+        console.error('Error generando PDF on-demand:', pdfResult.error);
+        return NextResponse.json(
+          { error: 'Error generando PDF: ' + pdfResult.error },
+          { status: 500 }
+        );
+      }
+      
+      // Actualizar los metadatos del recibo con el PDF generado
+      const updatedMetadatos = {
+        ...receipt.metadatos,
+        pdf_generation: {
+          download_url: pdfResult.data.download_url,
+          pdf_url: pdfResult.data.pdf_url || pdfResult.data.download_url,
+          template_id: pdfResult.data.template_id,
+          transaction_ref: pdfResult.data.api_response?.transaction_ref,
+          total_pages: pdfResult.data.api_response?.total_pages,
+          generated_at: pdfResult.data.generated_at,
+          status: "success",
+          generated_on_demand: true
+        }
+      };
+      
+      // Actualizar el recibo en la base de datos
+      await supabase
+        .from('receipts')
+        .update({ 
+          metadatos: updatedMetadatos,
+          url_archivo: pdfResult.data.download_url 
+        })
+        .eq('id', receiptId);
+      
+      pdfGeneration = updatedMetadatos.pdf_generation;
     }
 
     return NextResponse.json({
       success: true,
       data: {
         pdf_url: pdfGeneration.download_url,
-        pdf_direct_url: pdfGeneration.pdf_url,
+        pdf_direct_url: pdfGeneration.pdf_url || pdfGeneration.download_url,
         generated_at: pdfGeneration.generated_at,
         template_id: pdfGeneration.template_id,
+        generated_on_demand: pdfGeneration.generated_on_demand || false,
         receipt_info: {
           id: receipt.id,
           proveedor: receipt.proveedor,
