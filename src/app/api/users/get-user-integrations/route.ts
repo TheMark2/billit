@@ -22,12 +22,12 @@ export async function GET(request: NextRequest) {
     let profile = null;
     let foundWithFormat = '';
 
-    // Buscar el usuario con diferentes formatos
+    // Buscar el usuario con diferentes formatos - USAR 'telefono' en lugar de 'phone'
     for (const phoneFormat of phoneFormats) {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, empresa_id, phone')
-        .eq('phone', phoneFormat)
+        .select('id, empresa_id, telefono')
+        .eq('telefono', phoneFormat)
         .single();
 
       if (!error && data) {
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       // Debug: mostrar todos los números de teléfono en la base de datos
       const { data: allProfiles } = await supabase
         .from('profiles')
-        .select('phone')
+        .select('telefono')
         .limit(5);
 
       return NextResponse.json({ 
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
         debug: {
           searchedPhone: phone,
           searchedFormats: phoneFormats,
-          samplePhones: allProfiles?.map(p => p.phone) || []
+          samplePhones: allProfiles?.map(p => p.telefono) || []
         }
       }, { status: 404 });
     }
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
 
     if (!odooError && odooData) {
       integraciones.push({
-        type: 'odoo',
+        integration_type: 'odoo',
         name: 'Odoo',
         icon: '🟢',
         configured: true
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
 
     if (!holdedError && holdedData) {
       integraciones.push({
-        type: 'holded',
+        integration_type: 'holded',
         name: 'Holded',
         icon: '🔵',
         configured: true
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
 
     if (!xeroError && xeroData) {
       integraciones.push({
-        type: 'xero',
+        integration_type: 'xero',
         name: 'Xero',
         icon: '🟡',
         configured: true
@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
       empresa_id: profile.empresa_id,
       phone: phone,
       found_with_format: foundWithFormat,
-      integraciones: integraciones,
+      integrations: integraciones,
       total_integraciones: integraciones.length
     });
 
