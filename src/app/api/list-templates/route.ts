@@ -1,74 +1,33 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
-const APITEMPLATE_API_KEY = process.env.APITEMPLATE_API_KEY || 'bb6eMzI4MDY6Mjk5ODU6NWs4YmhqZ2NGUlZjUDlNRg=';
-
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    console.log('📋 Listando templates disponibles en APITemplate.io...');
-    console.log('🔑 API Key:', APITEMPLATE_API_KEY?.substring(0, 10) + '...');
+    console.log('🔍 Listing APITemplate templates...');
+    
+    const apiKey = process.env.APITEMPLATE_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
+    }
 
-    // Endpoint para listar templates según documentación de APITemplate.io
-    const listUrl = 'https://rest.apitemplate.io/v2/list-templates';
-
-    const response = await fetch(listUrl, {
+    const response = await fetch('https://rest.apitemplate.io/v2/list-templates', {
       method: 'GET',
       headers: {
-        'X-API-KEY': APITEMPLATE_API_KEY,
-      }
+        'X-API-KEY': apiKey,
+        'Content-Type': 'application/json',
+      },
     });
-
-    console.log('📡 Response status:', response.status);
-
-    const responseText = await response.text();
-    console.log('📡 Raw response:', responseText.substring(0, 500) + '...');
 
     if (!response.ok) {
-      console.error('❌ Error listing templates:', response.status, responseText);
-      return NextResponse.json({
-        success: false,
-        error: `Error listing templates: ${response.status}`,
-        raw_response: responseText,
-        message: 'No se pudieron listar los templates'
-      });
+      console.error('❌ APITemplate error:', response.statusText);
+      return NextResponse.json({ error: 'Failed to fetch templates' }, { status: response.status });
     }
 
-    let templates;
-    try {
-      templates = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('❌ Failed to parse templates response:', parseError);
-      return NextResponse.json({
-        success: false,
-        error: 'Invalid JSON response from APITemplate.io',
-        raw_response: responseText
-      });
-    }
-
-    console.log('✅ Templates listados exitosamente');
-
-    // Buscar si nuestro template existe
-    const ourTemplateId = process.env.APITEMPLATE_TEMPLATE_ID || '20877b23684b10a8';
-    const templateExists = Array.isArray(templates) ? 
-      templates.find(t => t.id === ourTemplateId || t.template_id === ourTemplateId) : 
-      false;
-
-    return NextResponse.json({
-      success: true,
-      message: 'Templates listados exitosamente',
-      templates: templates,
-      template_count: Array.isArray(templates) ? templates.length : 'N/A',
-      our_template_id: ourTemplateId,
-      our_template_exists: !!templateExists,
-      our_template_details: templateExists || null,
-      api_key_works: true
-    });
-
+    const data = await response.json();
+    console.log('✅ Templates fetched successfully');
+    
+    return NextResponse.json(data);
   } catch (error) {
-    console.error('💥 Error listing templates:', error);
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      message: 'Error al conectar con APITemplate.io para listar templates'
-    });
+    console.error('❌ Error listing templates:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 } 

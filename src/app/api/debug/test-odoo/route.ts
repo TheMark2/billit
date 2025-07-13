@@ -1,171 +1,104 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { decrypt } from '@/utils/encryption';
+import { supabase } from '@/lib/supabaseClient';
 
-export async function POST(request: NextRequest) {
+export async function GET() {
   try {
-    // Datos de prueba que simulan lo que extraería Mindee del BAR RESTAURANT LA BIMBA
-    const testMindeeData = {
-      supplier_name: "BAR RESTAURANT LA BIMBA",
-      supplier_address: "Calle Test, 123",
-      invoice_number: "T1-1-09359",
-      date: "2019-08-02",
-      currency: "EUR",
-      total_net: 32.75,
-      total_amount: 39.63, // Total con IVA
-      total_tax: 6.88, // IVA 21%
-      taxes: [
-        {
-          value: 6.88,
-          rate: 21.0,
-          base: 32.75,
-          code: "IVA",
-          details: "IVA 21%"
-        }
-      ],
-      line_items: [
-        {
-          description: "FRITOS LA BIMBA",
-          quantity: 1,
-          unit_price: 11.50,
-          total_amount: 11.50
-        },
-        {
-          description: "CALLOS",
-          quantity: 1,
-          unit_price: 5.00,
-          total_amount: 5.00
-        },
-        {
-          description: "PATATAS BRAVAS",
-          quantity: 1,
-          unit_price: 4.50,
-          total_amount: 4.50
-        },
-        {
-          description: "MEDIANA",
-          quantity: 5,
-          unit_price: 1.75,
-          total_amount: 8.75
-        },
-        {
-          description: "COPA",
-          quantity: 1,
-          unit_price: 1.75,
-          total_amount: 1.75
-        },
-        {
-          description: "CARAJILLO",
-          quantity: 1,
-          unit_price: 1.50,
-          total_amount: 1.50
-        }
-      ]
-    };
+    console.log('🔍 Testing Odoo connection...');
+    
+    // Obtener las credenciales de Odoo de la base de datos
+    const { data: credentials, error } = await supabase
+      .from('odoo_credentials')
+      .select('*')
+      .limit(1)
+      .single();
 
-    // Función de categorización (copiada de upload-receipt)
-    function categorizeExpense(supplierName: string, lineItems: any[]): {
-      category: string;
-      accountCode: string;
-      accountName: string;
-    } {
-      const supplier = (supplierName || '').toLowerCase();
-      const items = lineItems.map(item => (item.description || '').toLowerCase()).join(' ');
-      const allText = `${supplier} ${items}`;
-
-      // Restaurantes, bares, comidas
-      if (allText.match(/(restaurante?|bar|cafe|cafeteria|comida|cena|almuerzo|desayuno|fritos|patatas|callos|copa|cerveza|vino|bebida|tapas|menu)/i)) {
-        return {
-          category: 'restaurant',
-          accountCode: '627000',
-          accountName: 'Gastos de representación - Comidas y bebidas'
-        };
-      }
-
-      // Gasolina, combustible
-      if (allText.match(/(gasolina|combustible|repsol|cepsa|bp|shell|estacion|servicio|diesel|petroleo)/i)) {
-        return {
-          category: 'fuel',
-          accountCode: '628100',
-          accountName: 'Gastos de combustible'
-        };
-      }
-
-      // Material de oficina
-      if (allText.match(/(papel|boligrafo|lapiz|carpeta|archivador|tinta|impresora|oficina|material|suministro)/i)) {
-        return {
-          category: 'office',
-          accountCode: '629000',
-          accountName: 'Material de oficina'
-        };
-      }
-
-      // Servicios profesionales
-      if (allText.match(/(consultoria|asesoria|abogado|gestor|notario|servicio|profesional|honorarios)/i)) {
-        return {
-          category: 'professional',
-          accountCode: '623000',
-          accountName: 'Servicios de profesionales independientes'
-        };
-      }
-
-      // Telecomunicaciones
-      if (allText.match(/(telefono|internet|movil|telefonica|vodafone|orange|telecomunicacion)/i)) {
-        return {
-          category: 'telecom',
-          accountCode: '629200',
-          accountName: 'Gastos de telecomunicaciones'
-        };
-      }
-
-      // Default: Otros gastos de explotación
-      return {
-        category: 'other',
-        accountCode: '629900',
-        accountName: 'Otros gastos de explotación'
-      };
+    if (error || !credentials) {
+      console.error('❌ Error getting credentials:', error);
+      return NextResponse.json({ error: 'No credentials found' }, { status: 404 });
     }
 
-    // Probar la categorización
-    const expenseCategory = categorizeExpense(testMindeeData.supplier_name, testMindeeData.line_items);
-    
-    console.log('=== DEBUG TEST ODOO ===');
-    console.log('Supplier:', testMindeeData.supplier_name);
-    console.log('Line items:', testMindeeData.line_items.map(item => item.description).join(', '));
-    console.log('Categorized as:', expenseCategory);
-    console.log('Tax info:', {
-      total_net: testMindeeData.total_net,
-      total_tax: testMindeeData.total_tax,
-      total_amount: testMindeeData.total_amount,
-      tax_rate: (testMindeeData.total_tax / testMindeeData.total_net) * 100,
-      taxes: testMindeeData.taxes
+    console.log('✅ Credentials found:', {
+      id: credentials.id,
+      user_id: credentials.user_id,
+      url: credentials.url,
+      database: credentials.database,
+      username: credentials.username,
+      created_at: credentials.created_at
     });
 
-    return NextResponse.json({
-      success: true,
-      message: 'Test de categorización completado',
-      data: {
-        original_data: testMindeeData,
-        categorization: expenseCategory,
-        tax_analysis: {
-          total_net: testMindeeData.total_net,
-          total_tax: testMindeeData.total_tax,
-          total_amount: testMindeeData.total_amount,
-          tax_rate: (testMindeeData.total_tax / testMindeeData.total_net) * 100,
-          taxes: testMindeeData.taxes
+    // Desencriptar la contraseña
+    const decryptedPassword = decrypt(credentials.password);
+    console.log('🔓 Password decrypted successfully');
+
+    // Configurar la conexión a Odoo
+    const odooConfig = {
+      url: credentials.url,
+      database: credentials.database,
+      username: credentials.username,
+      password: decryptedPassword
+    };
+
+    console.log('🔧 Odoo config:', {
+      ...odooConfig,
+      password: '[HIDDEN]'
+    });
+
+    // Hacer una petición de prueba a Odoo
+    const authResponse = await fetch(`${credentials.url}/web/session/authenticate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'call',
+        params: {
+          db: credentials.database,
+          login: credentials.username,
+          password: decryptedPassword
         },
-        analysis: {
-          supplier_text: testMindeeData.supplier_name.toLowerCase(),
-          items_text: testMindeeData.line_items.map(item => item.description.toLowerCase()).join(' '),
-          combined_text: `${testMindeeData.supplier_name.toLowerCase()} ${testMindeeData.line_items.map(item => item.description.toLowerCase()).join(' ')}`,
-          matches_restaurant: /restaurante?|bar|cafe|cafeteria|comida|cena|almuerzo|desayuno|fritos|patatas|callos|copa|cerveza|vino|bebida|tapas|menu/i.test(`${testMindeeData.supplier_name.toLowerCase()} ${testMindeeData.line_items.map(item => item.description.toLowerCase()).join(' ')}`)
-        }
-      }
+        id: Math.random()
+      })
+    });
+
+    console.log('📡 Auth response status:', authResponse.status);
+    
+    if (!authResponse.ok) {
+      console.error('❌ Auth request failed:', authResponse.statusText);
+      return NextResponse.json({ 
+        error: 'Authentication failed', 
+        status: authResponse.status 
+      }, { status: 400 });
+    }
+
+    const authData = await authResponse.json() as any;
+    console.log('✅ Auth response:', authData);
+
+    if (authData.error) {
+      console.error('❌ Odoo auth error:', authData.error);
+      return NextResponse.json({ 
+        error: 'Odoo authentication error', 
+        details: authData.error 
+      }, { status: 400 });
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Odoo connection successful',
+      config: {
+        ...odooConfig,
+        password: '[HIDDEN]'
+      },
+      authData: authData
     });
 
   } catch (error) {
-    console.error('Test error:', error);
-    return NextResponse.json(
-      { error: 'Error en test' },
-      { status: 500 }
-    );
+    console.error('❌ Error testing Odoo connection:', error);
+    return NextResponse.json({ 
+      error: 'Internal server error', 
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 } 
