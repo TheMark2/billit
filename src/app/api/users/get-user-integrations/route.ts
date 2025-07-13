@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabaseClient';
+import { supabaseService } from '@/utils/supabaseClient';
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,6 +9,9 @@ export async function GET(request: NextRequest) {
     if (!phone) {
       return NextResponse.json({ error: 'Phone number is required' }, { status: 400 });
     }
+
+    // Crear cliente con service role para tener permisos completos
+    const supabase = supabaseService();
 
     // Intentar diferentes formatos del número
     const phoneFormats = [
