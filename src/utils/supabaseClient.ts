@@ -62,11 +62,11 @@ export async function checkUserSubscription(phoneNumber: string) {
   for (const phoneFormat of phoneFormats) {
     console.log(`🔎 Probando formato: "${phoneFormat}"`);
     
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, is_subscribed, plan_id, recibos_mes_actual, telefono')
-      .eq('telefono', phoneFormat)
-      .single();
+      const { data, error } = await supabase
+    .from('profiles')
+    .select('id, is_subscribed, plan_id, recibos_mes_actual, telefono, plans(nombre, limite_recibos)')
+    .eq('telefono', phoneFormat)
+    .single();
 
     if (!error && data) {
       profile = data;
@@ -104,15 +104,18 @@ export async function checkUserSubscription(phoneNumber: string) {
 
   console.log('✅ Usuario encontrado:', profile);
 
-  // Verificar cuota disponible (ejemplo: plan básico = 50 recibos)
-  const planLimits = {
-    'basic': 50,
-    'pro': 200,
-    'enterprise': 1000
-  };
-
-  const currentLimit = planLimits[profile.plan_id as keyof typeof planLimits] || 0;
+  // Obtener límite del plan directamente de la base de datos
+  const planData = profile.plans as any;
+  const currentLimit = planData?.limite_recibos || 50; // Default 50 si no hay plan
   const remainingQuota = currentLimit - (profile.recibos_mes_actual || 0);
+
+  console.log('📊 Información de cuota:', {
+    planName: planData?.nombre || 'Unknown',
+    currentLimit,
+    usedReceipts: profile.recibos_mes_actual || 0,
+    remainingQuota,
+    quotaAvailable: remainingQuota > 0
+  });
 
   return {
     isSubscribed: profile.is_subscribed,
