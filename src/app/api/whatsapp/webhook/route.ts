@@ -220,12 +220,20 @@ async function sendWhatsAppMessage(phoneNumber: string, message: string) {
 
 // Función para descargar archivo multimedia
 async function downloadMedia(mediaUrl: string): Promise<Buffer> {
+  console.log('⬇️ Descargando archivo multimedia desde:', mediaUrl);
   const response = await fetch(mediaUrl);
+  console.log('📥 Respuesta de descarga:', response.status, response.statusText);
+  
   if (!response.ok) {
+    console.log('❌ Error descargando archivo:', response.status, response.statusText);
     throw new Error(`Failed to download media: ${response.statusText}`);
   }
+  
   const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  const buffer = Buffer.from(arrayBuffer);
+  console.log('✅ Archivo descargado exitosamente, tamaño:', buffer.length, 'bytes');
+  
+  return buffer;
 }
 
 // Función para procesar recibo
@@ -235,11 +243,16 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
     const file = new File([mediaBuffer], 'receipt.jpg', { type: mediaType });
     
     // Llamar directamente a la función de procesamiento de Mindee
+    console.log('🧠 Llamando a Mindee API...');
     const mindeeResult = await processWithMindee(file);
+    console.log('📊 Resultado de Mindee:', mindeeResult);
     
     if (!mindeeResult.success) {
+      console.log('❌ Error de Mindee:', mindeeResult.error);
       throw new Error(mindeeResult.error || 'Error procesando factura');
     }
+    
+    console.log('✅ Mindee procesó exitosamente');
     
     // Obtener el usuario por número de teléfono
     const supabase = getSupabaseService();
@@ -291,6 +304,7 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
     }
     
     // Guardar el recibo en la base de datos
+    console.log('💾 Guardando recibo en base de datos...');
     const { data: receipt, error } = await supabase
       .from('receipts')
       .insert({
@@ -305,8 +319,11 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
       .single();
     
     if (error) {
+      console.log('❌ Error guardando recibo:', error);
       throw new Error(`Error guardando recibo: ${error.message}`);
     }
+    
+    console.log('✅ Recibo guardado exitosamente con ID:', receipt.id);
     
     return {
       success: true,
@@ -545,47 +562,66 @@ export async function POST(request: NextRequest) {
                 if (message.type === 'text' && message.text) {
                   await handleTextCommand(phoneNumber, message.text.body);
                 } else if (message.type === 'image' && message.image) {
-                  // Verificar usuario
-                  const userStatus = await checkUserSubscription(phoneNumber);
+                  console.log('🖼️ Procesando imagen de:', phoneNumber);
                   
-                  if (!userStatus.isSubscribed || !userStatus.quotaAvailable) {
-                    await sendWhatsAppMessage(phoneNumber, 
-                      `❌ *Suscripción inactiva o sin cuota*\n\nVe a tu dashboard para activar tu plan.`
-                    );
-                    continue;
-                  }
-                  
-                  // Obtener URL del archivo
-                  const mediaResponse = await fetch(
-                    `https://graph.facebook.com/v18.0/${message.image.id}`,
-                    {
-                      headers: {
-                        'Authorization': `Bearer ${process.env.WHATSAPP_BUSINESS_TOKEN}`
-                      }
-                    }
-                  );
-                  
-                  const mediaData = await mediaResponse.json();
-                  if (!mediaData.url) {
-                    throw new Error('No media URL found');
-                  }
-                  const mediaBuffer = await downloadMedia(mediaData.url);
-                  
-                  // Procesar recibo
                   try {
-                    const result = await processReceipt(phoneNumber, mediaBuffer, message.image.mime_type);
+                    // Verificar usuario
+                    console.log('🔍 Verificando usuario...');
+                    const userStatus = await checkUserSubscription(phoneNumber);
                     
-                    if (result.success) {
-                      // Obtener integraciones y enviar menú
-                      const integrations = await getUserIntegrations(phoneNumber);
-                      const menu = generateIntegrationsMenu(integrations, phoneNumber);
-                      await sendWhatsAppMessage(phoneNumber, menu.message);
-                    } else {
+                    if (!userStatus.isSubscribed || !userStatus.quotaAvailable) {
+                      console.log('❌ Usuario sin suscripción o cuota');
                       await sendWhatsAppMessage(phoneNumber, 
-                        `❌ *Error al procesar factura*\n\nHubo un problema procesando tu factura. Inténtalo nuevamente.`
+                        `❌ *Suscripción inactiva o sin cuota*\n\nVe a tu dashboard para activar tu plan.`
                       );
+                      continue;
                     }
+                    
+                    console.log('✅ Usuario verificado, procesando imagen...');
+                    
+                    // Obtener URL del archivo
+                    console.log('📥 Obteniendo URL del archivo con ID:', message.image.id);
+                    const mediaResponse = await fetch(
+                      `https://graph.facebook.com/v18.0/${message.image.id}`,
+                      {
+                        headers: {
+                          'Authorization': `Bearer ${process.env.WHATSAPP_BUSINESS_TOKEN}`
+                        }
+                      }
+                    );
+                    
+                    const mediaData = await mediaResponse.json();
+                    console.log('🔗 Respuesta de Facebook API:', mediaData);
+                    
+                    if (!mediaData.url) {
+                      console.log('❌ No se encontró URL del archivo');
+                      throw new Error('No media URL found');
+                    }
+                    
+                    console.log('⬇️ Descargando archivo desde:', mediaData.url);
+                    const mediaBuffer = await downloadMedia(mediaData.url);
+                    console.log('✅ Archivo descargado, tamaño:', mediaBuffer.length, 'bytes');
+                    
+                    // Procesar recibo
+                    console.log('🔄 Procesando recibo...');
+                    const result = await processReceipt(phoneNumber, mediaBuffer, message.image.mime_type);
+                    console.log('📊 Resultado del procesamiento:', result);
+                    
+                    console.log('✅ Recibo procesado exitosamente');
+                    
+                    // Obtener integraciones y enviar menú
+                    console.log('🔍 Obteniendo integraciones...');
+                    const integrations = await getUserIntegrations(phoneNumber);
+                    console.log('🔗 Integraciones encontradas:', integrations.length);
+                    
+                    console.log('📋 Generando menú...');
+                    const menu = generateIntegrationsMenu(integrations, phoneNumber);
+                    console.log('📤 Enviando menú al usuario...');
+                    
+                    await sendWhatsAppMessage(phoneNumber, menu.message);
+                    console.log('✅ Menú enviado correctamente');
                   } catch (error) {
+                    console.error('❌ Error completo en procesamiento de imagen:', error);
                     await sendWhatsAppMessage(phoneNumber, 
                       `❌ *Error al procesar factura*\n\nHubo un problema procesando tu factura. Inténtalo nuevamente.`
                     );
