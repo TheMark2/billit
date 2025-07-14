@@ -40,7 +40,7 @@ export async function checkUserSubscription(phoneNumber: string) {
   const { data, error } = await supabase
     .from('profiles')
     .select('id, is_subscribed, plan_id, recibos_mes_actual')
-    .eq('phone_number', phoneNumber)
+    .eq('telefono', phoneNumber)
     .single();
 
   if (error || !data) {

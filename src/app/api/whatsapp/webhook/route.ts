@@ -51,7 +51,7 @@ async function getUserIntegrations(phoneNumber: string) {
   const { data: profile } = await supabase
     .from('profiles')
     .select('id, empresa_id')
-    .eq('phone_number', phoneNumber)
+    .eq('telefono', phoneNumber)
     .single();
 
   if (!profile) return [];
@@ -209,7 +209,7 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
     const { data: profile } = await supabase
       .from('profiles')
       .select('id, empresa_id')
-      .eq('phone_number', phoneNumber)
+      .eq('telefono', phoneNumber)
       .single();
     
     if (!profile) {
@@ -334,7 +334,7 @@ async function handleTextCommand(phoneNumber: string, command: string) {
           const { data: userProfile } = await supabase
             .from('profiles')
             .select('id')
-            .eq('phone_number', cleanPhone)
+            .eq('telefono', cleanPhone)
             .single();
           
           if (!userProfile) {
