@@ -103,7 +103,24 @@ export function RecentReceipts() {
       }
 
       const mapped: Receipt[] = (receiptsRaw || []).map((r: any) => {
-        const rawType = (r.metadatos?.tipo || "").toLowerCase();
+        // Obtener el tipo de documento desde los datos de Mindee
+        const mindeeDocType = r.metadatos?.mindee_data?.document_type;
+        let rawType = "";
+        
+        if (mindeeDocType) {
+          // Mapear tipos de Mindee a nuestros tipos
+          const typeMapping: Record<string, string> = {
+            'INVOICE': 'invoice',
+            'RECEIPT': 'receipt',
+            'QUOTE': 'quote',
+            'PURCHASE_ORDER': 'purchase_order',
+            'CREDIT_NOTE': 'credit_note',
+            'STATEMENT': 'statement',
+            'PAYSLIP': 'payslip'
+          };
+          rawType = typeMapping[mindeeDocType.toUpperCase()] || mindeeDocType.toLowerCase();
+        }
+        
         const validKey = rawType && rawType in DOC_TYPE_MAP ? rawType : "other_financial";
         
         return {

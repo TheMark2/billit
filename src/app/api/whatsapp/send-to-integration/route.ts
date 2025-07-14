@@ -148,12 +148,34 @@ export async function POST(request: NextRequest) {
     
     const supabase = supabaseService();
     
-    // Obtener empresa del usuario
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('empresa_id')
-      .eq('telefono', phoneNumber)
-      .single();
+    // Obtener empresa del usuario usando múltiples formatos de número
+    const phoneFormats = [
+      phoneNumber, // Formato original
+      phoneNumber.replace('whatsapp:', ''), // Quitar prefijo whatsapp:
+      phoneNumber.replace('whatsapp:', '').replace('+', ''), // Quitar whatsapp: y +
+      phoneNumber.replace('+', ''), // Solo quitar +
+      phoneNumber.replace(/^34/, ''), // Quitar 34 del principio (ESTE ES EL IMPORTANTE)
+      phoneNumber.replace(/^(\+34|34)/, ''), // Quitar +34 o 34 del principio
+      `+34${phoneNumber}`, // Añadir +34
+      phoneNumber.replace('+34', ''), // Quitar +34
+      `+${phoneNumber}`, // Añadir +
+      phoneNumber.replace('+', ''), // Quitar +
+      phoneNumber.replace(/\D/g, '') // Solo números
+    ];
+
+    let profile = null;
+    for (const phoneFormat of phoneFormats) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('empresa_id')
+        .eq('telefono', phoneFormat)
+        .single();
+
+      if (!error && data) {
+        profile = data;
+        break;
+      }
+    }
     
     if (!profile) {
       return NextResponse.json({ 

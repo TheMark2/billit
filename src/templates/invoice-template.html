@@ -232,7 +232,7 @@
 <body>
     <div class="container">
         <header>
-            <div class="logo">📄 {{supplier}}</div>
+            <div class="logo">{{supplier}}</div>
             <div class="invoice-details">
                 <div>Número de Factura: <span class="highlight">{{invoice_number}}</span></div>
                 <div>Fecha de Emisión: <span>{{date}}</span></div>
@@ -307,7 +307,7 @@
 
         {{#if tax_rate}}
         <section class="tax-details">
-            <h4>📊 Desglose de Impuestos</h4>
+            <h4>Desglose de Impuestos</h4>
             <div class="tax-row">
                 <span>Base Imponible:</span>
                 <span>{{formatCurrency total_net currency}}</span>
@@ -336,7 +336,7 @@
 
         <section class="payment-info">
             <div class="payment-box">
-                <h4>💳 Información de Pago</h4>
+                <h4>Información de Pago</h4>
                 <div><strong>Método de pago:</strong> {{payment_method}}</div>
                 {{#if due_date}}
                 <div><strong>Vencimiento:</strong> {{due_date}}</div>

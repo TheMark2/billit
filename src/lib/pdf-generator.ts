@@ -215,7 +215,7 @@ export async function generatePdfWithPuppeteer(mindeeData: any, userId?: string)
       
       // Documento
       invoice_number: mindeeData.invoice_number || `AUTO-${Date.now()}`,
-      document_type: mindeeData.document_type?.value || 'Factura',
+      document_type: mindeeData.document_type || 'Factura',
       
       // Items procesados
       line_items: processedLineItems,
