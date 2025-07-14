@@ -320,9 +320,16 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
       .insert({
         user_id: profile.id,
         empresa_id: profile.empresa_id,
-        processed_data: mindeeResult.data,
-        original_filename: 'whatsapp_receipt.jpg',
-        processing_status: 'completed',
+        fecha_emision: mindeeResult.data.date || new Date().toISOString().split('T')[0],
+        proveedor: mindeeResult.data.supplier_name || 'Desconocido',
+        numero_factura: mindeeResult.data.invoice_number || null,
+        total: mindeeResult.data.total_amount || 0,
+        moneda: mindeeResult.data.currency || 'EUR',
+        estado: 'procesado',
+        file_name: 'whatsapp_receipt.jpg',
+        file_type: 'image/jpeg',
+        status: 'completed',
+        metadatos: mindeeResult.data,
         created_at: new Date().toISOString()
       })
       .select()
