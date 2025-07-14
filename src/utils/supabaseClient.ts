@@ -43,6 +43,8 @@ export async function checkUserSubscription(phoneNumber: string) {
     phoneNumber.replace('whatsapp:', ''), // Quitar prefijo whatsapp:
     phoneNumber.replace('whatsapp:', '').replace('+', ''), // Quitar whatsapp: y +
     phoneNumber.replace('+', ''), // Solo quitar +
+    phoneNumber.replace(/^34/, ''), // Quitar 34 del principio (ESTE ES EL IMPORTANTE)
+    phoneNumber.replace(/^(\+34|34)/, ''), // Quitar +34 o 34 del principio
     `+34${phoneNumber}`, // Añadir +34
     phoneNumber.replace('+34', ''), // Quitar +34
     `+${phoneNumber}`, // Añadir +

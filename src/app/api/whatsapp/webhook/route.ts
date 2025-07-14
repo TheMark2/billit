@@ -54,6 +54,8 @@ async function getUserIntegrations(phoneNumber: string) {
     phoneNumber.replace('whatsapp:', ''), // Quitar prefijo whatsapp:
     phoneNumber.replace('whatsapp:', '').replace('+', ''), // Quitar whatsapp: y +
     phoneNumber.replace('+', ''), // Solo quitar +
+    phoneNumber.replace(/^34/, ''), // Quitar 34 del principio (ESTE ES EL IMPORTANTE)
+    phoneNumber.replace(/^(\+34|34)/, ''), // Quitar +34 o 34 del principio
     `+34${phoneNumber}`, // Añadir +34
     phoneNumber.replace('+34', ''), // Quitar +34
     `+${phoneNumber}`, // Añadir +
@@ -242,18 +244,20 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
     // Obtener el usuario por número de teléfono
     const supabase = getSupabaseService();
     
-    // Intentar diferentes formatos del número
-    const phoneFormats = [
-      phoneNumber, // Formato original
-      phoneNumber.replace('whatsapp:', ''), // Quitar prefijo whatsapp:
-      phoneNumber.replace('whatsapp:', '').replace('+', ''), // Quitar whatsapp: y +
-      phoneNumber.replace('+', ''), // Solo quitar +
-      `+34${phoneNumber}`, // Añadir +34
-      phoneNumber.replace('+34', ''), // Quitar +34
-      `+${phoneNumber}`, // Añadir +
-      phoneNumber.replace('+', ''), // Quitar +
-      phoneNumber.replace(/\D/g, '') // Solo números
-    ];
+      // Intentar diferentes formatos del número
+  const phoneFormats = [
+    phoneNumber, // Formato original
+    phoneNumber.replace('whatsapp:', ''), // Quitar prefijo whatsapp:
+    phoneNumber.replace('whatsapp:', '').replace('+', ''), // Quitar whatsapp: y +
+    phoneNumber.replace('+', ''), // Solo quitar +
+    phoneNumber.replace(/^34/, ''), // Quitar 34 del principio (ESTE ES EL IMPORTANTE)
+    phoneNumber.replace(/^(\+34|34)/, ''), // Quitar +34 o 34 del principio
+    `+34${phoneNumber}`, // Añadir +34
+    phoneNumber.replace('+34', ''), // Quitar +34
+    `+${phoneNumber}`, // Añadir +
+    phoneNumber.replace('+', ''), // Quitar +
+    phoneNumber.replace(/\D/g, '') // Solo números
+  ];
 
     console.log('🔍 processReceipt - Buscando con número:', phoneNumber);
     console.log('📱 processReceipt - Formatos a probar:', phoneFormats);
@@ -407,6 +411,8 @@ async function handleTextCommand(phoneNumber: string, command: string) {
             cleanPhone.replace('whatsapp:', ''), // Quitar prefijo whatsapp:
             cleanPhone.replace('whatsapp:', '').replace('+', ''), // Quitar whatsapp: y +
             cleanPhone.replace('+', ''), // Solo quitar +
+            cleanPhone.replace(/^34/, ''), // Quitar 34 del principio (ESTE ES EL IMPORTANTE)
+            cleanPhone.replace(/^(\+34|34)/, ''), // Quitar +34 o 34 del principio
             `+34${cleanPhone}`, // Añadir +34
             cleanPhone.replace('+34', ''), // Quitar +34
             `+${cleanPhone}`, // Añadir +
