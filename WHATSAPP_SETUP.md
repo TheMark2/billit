@@ -45,10 +45,10 @@ NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=your_stripe_publishable_key
 MINDEE_API_KEY=1d6ac579ba024d9fb6c0ebcffdf2b5a0
 
 # ==========================================
-# APITEMPLATE.IO (PDF GENERATION)
+# PDF GENERATION (Puppeteer - Local)
 # ==========================================
-APITEMPLATE_API_KEY=bb6eMzI4MDY6Mjk5ODU6NWs4YmhqZ2NGC1ZjUDlNRg=
-APITEMPLATE_TEMPLATE_ID=20877b23684b10a8
+# No se requieren variables adicionales
+# El PDF se genera localmente con Puppeteer
 
 # ==========================================
 # INTEGRATIONS
@@ -323,7 +323,7 @@ curl -X POST https://tu-dominio.com/api/upload-receipt \
 - Revisar logs de `/api/upload-receipt`
 
 ### **PDF no se genera:**
-- Verificar APITemplate.io credentials
+- Verificar que Puppeteer esté instalado
 - Confirmar que el template ID existe
 - Revisar logs de generación de PDF
 

@@ -64,7 +64,6 @@ serve(async (req) => {
   });
 
   if (insertError) {
-    console.error("Error inserting receipt:", insertError);
     return new Response(
       JSON.stringify({ status: "error", message: "Error al guardar recibo" }),
       { status: 500, headers: { "Content-Type": "application/json" } },
@@ -85,11 +84,7 @@ serve(async (req) => {
       .update({ recibos_mes_actual: newCount })
       .eq("id", userId);
 
-    if (updateErr) {
-      console.error("Error updating receipt count:", updateErr);
-    }
-  } else {
-    console.error("Error fetching profile to update count:", profileErr);
+    // Silenciar errores de actualización de contador
   }
 
   return new Response(JSON.stringify({ status: "success" }), {

@@ -18,12 +18,15 @@ import {
   IconBasket,
   IconPhotoFilled,
   IconPhoto,
+  IconBell,
+  IconBellFilled,
 } from "@tabler/icons-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/Avatar";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "../ui/button";
 import { ProfileSkeleton } from "./Skeletons";
+import { Notifications } from "./Notifications";
 
 const menuItems = [
   { 
@@ -114,14 +117,21 @@ export default function DashboardNavbar() {
 
   return (
     <aside className="h-screen w-64 bg-white flex flex-col px-4 py-6 rounded-r-3xl">
-      <div className="mb-8">
+      {/* Header con logo y notificaciones */}
+      <div className="mb-8 flex items-center justify-between">
         <Link href="/dashboard" className="flex items-center">
           <img 
             src="/Logobillit1.svg" 
             alt="Billit Logo" 
-            className="h-10 w-auto"
+            className="h-6 w-auto opacity-60 hover:opacity-80 transition-opacity duration-200"
+            style={{
+              filter: 'grayscale(1) brightness(0.6)'
+            }}
           />
         </Link>
+        
+        {/* Notificaciones */}
+        <Notifications />
       </div>
 
       <div className="mb-6">

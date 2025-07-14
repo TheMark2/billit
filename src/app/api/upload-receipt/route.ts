@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { decrypt } from '@/utils/encryption';
+import { generatePdfWithPuppeteer } from '@/lib/pdf-generator';
 
 const MINDEE_API_KEY = '1d6ac579ba024d9fb6c0ebcffdf2b5a0';
 const MINDEE_API_URL = 'https://api.mindee.net/v1/products/mindee/invoices/v4/predict';
-
-// APITemplate.io Configuration
-const APITEMPLATE_API_KEY = process.env.APITEMPLATE_API_KEY || 'bb6eMzI4MDY6Mjk5ODU6NWs4YmhqZ2NGC1ZjUDlNRg=';
-const APITEMPLATE_TEMPLATE_ID = process.env.APITEMPLATE_TEMPLATE_ID || '20877b23684b10a8';
-const APITEMPLATE_API_URL = 'https://rest.apitemplate.io/v2/create-pdf';
 
 // Función para crear un evento SSE
 function createSSEEvent(data: any, event?: string): string {
@@ -68,7 +64,7 @@ async function processWithProgress(file: File, userId: string, controller: Reada
     const integrationPromises = [];
     
     integrationPromises.push(
-      generatePdfWithApiTemplate(mindeeResult.data, userId)
+      generatePdfWithPuppeteer(mindeeResult.data, userId)
         .then(result => ({ type: 'pdf', result }))
         .catch(error => ({ type: 'pdf', result: { success: false, error: error.message } }))
     );
@@ -323,7 +319,7 @@ export async function POST(request: NextRequest) {
     const integrationPromises = [];
     
     integrationPromises.push(
-      generatePdfWithApiTemplate(mindeeResult.data, user.id)
+      generatePdfWithPuppeteer(mindeeResult.data, user.id)
         .then(result => ({ type: 'pdf', result }))
         .catch(error => ({ type: 'pdf', result: { success: false, error: error.message } }))
     );
@@ -513,8 +509,8 @@ export async function processWithMindee(file: File): Promise<{
   }
 }
 
-// Función para generar PDF con APITemplate.io
-export async function generatePdfWithApiTemplate(mindeeData: any, userId?: string): Promise<{
+// Función para generar PDF con APITemplate.io - OBSOLETA - Reemplazada por generatePdfWithPuppeteer
+/* export async function generatePdfWithApiTemplate(mindeeData: any, userId?: string): Promise<{
   success: boolean;
   data?: any;
   error?: string;
@@ -756,6 +752,7 @@ function extractPaymentMethod(paymentDetails: any[]): string {
   
   return 'No especificado';
 }
+*/
 
 // OPTIMIZACIÓN: Función para obtener todas las credenciales en paralelo
 export async function getAllCredentials(userId: string): Promise<{
@@ -827,136 +824,135 @@ export async function getAllCredentials(userId: string): Promise<{
   }
 }
 
-// Función optimizada para enviar datos a Holded
+// Función completamente rehecha para enviar datos a Holded
 export async function sendToHolded(mindeeData: any, credentials: any): Promise<{
   success: boolean;
   data?: any;
   error?: string;
 }> {
+  const LOG_PREFIX = '🟢 [HOLDED]';
+  
   try {
-    console.log('Starting optimized Holded integration...');
+    console.log(`${LOG_PREFIX} Iniciando integración mejorada con Holded...`);
     
-    // Configurar timeout para evitar bloqueos
-    const TIMEOUT_MS = 25000; // 25 segundos
-    
+    // Configuración de timeout mejorada
+    const TIMEOUT_MS = 30000; // 30 segundos
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
     
-    // Limpiar timeout al finalizar
-    const cleanup = () => clearTimeout(timeoutId);
+    // Cleanup function para limpiar recursos
+    const cleanup = () => {
+      clearTimeout(timeoutId);
+      console.log(`${LOG_PREFIX} Recursos limpiados`);
+    };
 
     try {
-      // URL base de Holded
-      const baseUrl = 'https://api.holded.com/api';
-
-      // Preparar los items de la factura de forma optimizada
-      const items = [];
+      // Validar datos de entrada
+      if (!mindeeData) {
+        throw new Error('Datos de Mindee requeridos');
+      }
       
-      if (mindeeData.line_items && mindeeData.line_items.length > 0) {
-        // Usar los items específicos de la factura
-        for (const item of mindeeData.line_items) {
-          const quantity = parseFloat(item.quantity) || 1;
-          const unitPrice = parseFloat(item.unit_price) || (parseFloat(item.total_amount) / quantity) || 0;
-          
-          items.push({
-            name: item.description || 'Producto/Servicio',
-            quantity: quantity,
-            price_unit: unitPrice
-          });
-        }
-      } else {
-        // Si no hay items específicos, crear uno con el total
-        const totalAmount = parseFloat(mindeeData.total_net) || parseFloat(mindeeData.total_amount) || 0;
-        items.push({
-          name: `Factura de compra - ${mindeeData.supplier_name || 'Proveedor'}`,
-          quantity: 1,
-          price_unit: totalAmount
-        });
+      if (!credentials?.api_key) {
+        throw new Error('API Key de Holded requerida');
       }
 
-      // Preparar los datos para Holded de forma optimizada
-      const holdedInvoiceData = {
-        // Información del contacto/proveedor
-        contactName: mindeeData.supplier_name || 'Proveedor no identificado',
-        contactCode: mindeeData.supplier_company_registrations?.[0]?.value || '', 
-        contactEmail: '',
-        contactAddress: mindeeData.supplier_address || '',
-        
-        // Información de la factura
-        date: mindeeData.date ? Math.floor(new Date(mindeeData.date).getTime() / 1000) : Math.floor(Date.now() / 1000),
-        ref: mindeeData.invoice_number || `ReciptAI-${Date.now()}`,
-        currency: mindeeData.currency || 'EUR',
-        notes: `Factura procesada automáticamente por ReciptAI\nProveedor: ${mindeeData.supplier_name || 'N/A'}\nTotal: ${mindeeData.total_amount || 0} ${mindeeData.currency || 'EUR'}`,
-        
-        // Configuración para recibo de compra
-        isReceipt: true,
-        approveDoc: true,
-        applyContactDefaults: true,
-        
-        // Items de la factura
-        items: items
-      };
-
-      console.log('Sending optimized data to Holded...');
-
-      // Crear factura en Holded con timeout
-      const holdedResponse = await fetch(`${baseUrl}/invoicing/v1/receipts`, {
-        method: 'POST',
+      // Configuración de la API de Holded
+      const API_CONFIG = {
+        baseUrl: 'https://api.holded.com/api',
         headers: {
           'Key': credentials.api_key,
           'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(holdedInvoiceData),
+          'Accept': 'application/json'
+        }
+      };
+
+      console.log(`${LOG_PREFIX} Configuración validada, procesando datos...`);
+
+      // Procesamiento mejorado de items de factura
+      const processedItems = processInvoiceItems(mindeeData);
+      console.log(`${LOG_PREFIX} Items procesados: ${processedItems.length}`);
+
+      // Procesamiento mejorado de información del proveedor
+      const supplierInfo = processSupplierInfo(mindeeData);
+      console.log(`${LOG_PREFIX} Información del proveedor procesada`);
+
+      // Preparar datos específicos para FACTURA DE GASTO en Holded
+      const holdedReceiptData = {
+        // Información del contacto/proveedor (requerido)
+        contactName: supplierInfo.name,
+        contactCode: supplierInfo.code,
+        
+        // Información de la factura de gasto (campos requeridos)
+        date: formatDateForHolded(mindeeData.date),
+        currency: mindeeData.currency || 'EUR',
+        
+        // CONFIGURACIÓN ESPECÍFICA PARA FACTURAS DE GASTO EN HOLDED
+        // Removemos isReceipt: true para crear facturas de gasto en lugar de recibos
+        approveDoc: false,
+        applyContactDefaults: true,
+        
+        // Items procesados según formato exacto de Holded para facturas de gasto
+        items: processedItems.map(item => ({
+          name: item.name,
+          units: item.quantity,
+          price: item.price_unit,
+          tax: item.tax_rate || 21
+        })),
+        
+        // Campos adicionales importantes para facturas de gasto
+        notes: generateInvoiceNotes(mindeeData),
+        ref: generateInvoiceReference(mindeeData),
+        
+        // Información del contacto/proveedor si está disponible
+        ...(supplierInfo.email && { contactEmail: supplierInfo.email }),
+        ...(supplierInfo.address && { contactAddress: supplierInfo.address }),
+        ...(supplierInfo.phone && { contactPhone: supplierInfo.phone })
+      };
+
+      console.log(`${LOG_PREFIX} Datos preparados para envío a Holded`);
+      console.log(`${LOG_PREFIX} 🔍 Datos completos enviados a Holded:`, JSON.stringify(holdedReceiptData, null, 2));
+      console.log(`${LOG_PREFIX} 🔍 Items detallados:`, holdedReceiptData.items);
+      console.log(`${LOG_PREFIX} 🔍 Fecha (timestamp):`, holdedReceiptData.date);
+      console.log(`${LOG_PREFIX} 🔍 Contacto:`, holdedReceiptData.contactName);
+
+      // Validar datos antes de enviar
+      const validation = validateHoldedData(holdedReceiptData);
+      if (!validation.valid) {
+        console.error(`${LOG_PREFIX} ❌ Validación falló:`, validation.errors);
+        throw new Error(`Datos inválidos para Holded: ${validation.errors.join(', ')}`);
+      }
+      
+      console.log(`${LOG_PREFIX} ✅ Validación exitosa, enviando a Holded...`);
+
+      // Enviar a Holded con manejo de errores mejorado
+      const response = await fetch(`${API_CONFIG.baseUrl}/invoicing/v1/documents/purchase`, {
+        method: 'POST',
+        headers: API_CONFIG.headers,
+        body: JSON.stringify(holdedReceiptData),
         signal: controller.signal
       });
 
       cleanup();
 
-      if (!holdedResponse.ok) {
-        const errorText = await holdedResponse.text();
-        console.error('Holded API error:', holdedResponse.status, errorText);
-        
-        let errorMessage = `Error ${holdedResponse.status}`;
-        
-        if (holdedResponse.status === 401) {
-          errorMessage = 'API Key inválida - Verifica tus credenciales de Holded';
-        } else if (holdedResponse.status === 403) {
-          errorMessage = 'Acceso denegado - Verifica los permisos de tu API Key';
-        } else if (holdedResponse.status === 429) {
-          errorMessage = 'Límite de API excedido - Intenta nuevamente más tarde';
-        } else if (holdedResponse.status >= 500) {
-          errorMessage = 'Error del servidor de Holded - Intenta nuevamente más tarde';
-        } else if (errorText) {
-          try {
-            const errorJson = JSON.parse(errorText);
-            errorMessage = errorJson.message || errorText;
-          } catch {
-            errorMessage = errorText;
-          }
+      // Manejo mejorado de respuesta
+      const responseData = await handleHoldedResponse(response);
+      
+      console.log(`${LOG_PREFIX} Respuesta exitosa procesada`);
+
+      return {
+        success: true,
+        data: {
+          holded_receipt_id: responseData.id || responseData.receiptId,
+          holded_status: responseData.status,
+          holded_ref: generateInvoiceReference(mindeeData),
+          total_amount: parseFloat(mindeeData.total_amount) || 0,
+          currency: holdedReceiptData.currency,
+          supplier_name: supplierInfo.name,
+          items_count: processedItems.length,
+          message: `Recibo creado exitosamente en Holded (ID: ${responseData.id || responseData.receiptId})`,
+          processed_at: new Date().toISOString()
         }
-        
-        throw new Error(errorMessage);
-      }
-
-      const holdedResult = await holdedResponse.json();
-      console.log('Holded response received successfully');
-
-      // Verificar que la respuesta sea válida
-      if (holdedResult && (holdedResult.id || holdedResult.status === 'created')) {
-        return {
-          success: true,
-          data: {
-            holded_receipt_id: holdedResult.id || holdedResult.receiptId,
-            holded_status: holdedResult.status,
-            total_amount: mindeeData.total_amount,
-            currency: mindeeData.currency,
-            message: `Recibo creado exitosamente en Holded (ID: ${holdedResult.id || holdedResult.receiptId})`
-          }
-        };
-      } else {
-        console.error('Unexpected response from Holded:', holdedResult);
-        throw new Error('Respuesta inesperada de Holded - La factura pudo no haberse creado correctamente');
-      }
+      };
 
     } catch (error) {
       cleanup();
@@ -964,27 +960,269 @@ export async function sendToHolded(mindeeData: any, credentials: any): Promise<{
     }
 
   } catch (error) {
-    console.error('Error optimized Holded integration:', error);
-    
-    let errorMessage = 'Error desconocido en Holded';
-    
-    if (error instanceof Error) {
-      if (error.name === 'AbortError') {
-        errorMessage = 'Timeout conectando con Holded - El servidor no respondió a tiempo';
-      } else if (error.message.includes('API Key')) {
-        errorMessage = 'Error de API Key con Holded - Verifica tus credenciales';
-      } else if (error.message.includes('conexión')) {
-        errorMessage = 'Error de conexión con Holded - Verifica tu conexión a internet';
-      } else {
-        errorMessage = error.message;
-      }
-    }
+    console.error(`${LOG_PREFIX} Error en integración:`, error);
     
     return {
       success: false,
-      error: errorMessage
+      error: formatHoldedError(error)
     };
   }
+}
+
+// Función auxiliar para procesar items de factura
+function processInvoiceItems(mindeeData: any): any[] {
+  const items = [];
+  
+  if (mindeeData.line_items && mindeeData.line_items.length > 0) {
+    // Procesar items específicos
+    for (const item of mindeeData.line_items) {
+      const quantity = Math.max(parseFloat(item.quantity) || 1, 1);
+      const unitPrice = parseFloat(item.unit_price) || 
+                       (parseFloat(item.total_amount) / quantity) || 0;
+      
+      // Validar que tenemos valores válidos
+      if (unitPrice > 0) {
+        items.push({
+          name: sanitizeItemName(item.description),
+          quantity: quantity,
+          price_unit: unitPrice,
+          tax_rate: extractTaxRate(item),
+          total_amount: parseFloat(item.total_amount) || (quantity * unitPrice)
+        });
+      }
+    }
+  }
+  
+  // Si no hay items válidos o no hay line_items, crear item único con el total
+  if (items.length === 0) {
+    const totalAmount = parseFloat(mindeeData.total_net) || 
+                       parseFloat(mindeeData.total_amount) || 0;
+    
+    if (totalAmount > 0) {
+      items.push({
+        name: `Factura de compra - ${mindeeData.supplier_name || 'Proveedor'}`,
+        quantity: 1,
+        price_unit: totalAmount,
+        tax_rate: extractTaxRate(mindeeData),
+        total_amount: totalAmount
+      });
+    }
+  }
+  
+  return items;
+}
+
+// Función auxiliar para validar datos de Holded
+function validateHoldedData(data: any): { valid: boolean; errors: string[] } {
+  const errors = [];
+  
+  if (!data.contactName || data.contactName.trim() === '') {
+    errors.push('contactName es requerido');
+  }
+  
+  if (!data.date || isNaN(data.date)) {
+    errors.push('date debe ser un timestamp Unix válido');
+  }
+  
+  if (!data.items || !Array.isArray(data.items) || data.items.length === 0) {
+    errors.push('items es requerido y debe ser un array no vacío');
+  } else {
+    data.items.forEach((item: any, index: number) => {
+      if (!item.name || item.name.trim() === '') {
+        errors.push(`item[${index}].name es requerido`);
+      }
+      if (!item.units || item.units <= 0) {
+        errors.push(`item[${index}].units debe ser mayor que 0`);
+      }
+      if (item.price === undefined || item.price < 0) {
+        errors.push(`item[${index}].price debe ser mayor o igual a 0`);
+      }
+    });
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors
+  };
+}
+
+// Función auxiliar para procesar información del proveedor
+function processSupplierInfo(mindeeData: any): any {
+  return {
+    name: mindeeData.supplier_name || 'Proveedor no identificado',
+    code: mindeeData.supplier_company_registrations?.[0]?.value || 
+          mindeeData.supplier_tax_number || '',
+    email: mindeeData.supplier_email || '',
+    address: mindeeData.supplier_address || '',
+    phone: mindeeData.supplier_phone || ''
+  };
+}
+
+// Función auxiliar para formatear fecha para Holded
+function formatDateForHolded(date: string | null): number {
+  if (!date) return Math.floor(Date.now() / 1000);
+  
+  try {
+    return Math.floor(new Date(date).getTime() / 1000);
+  } catch {
+    return Math.floor(Date.now() / 1000);
+  }
+}
+
+// Función auxiliar para generar referencia de factura
+function generateInvoiceReference(mindeeData: any): string {
+  return mindeeData.invoice_number || 
+         mindeeData.receipt_number || 
+         `ReciptAI-${Date.now()}`;
+}
+
+// Función auxiliar para generar notas de factura
+function generateInvoiceNotes(mindeeData: any): string {
+  const notes = [
+    'Factura procesada automáticamente por ReciptAI',
+    `Proveedor: ${mindeeData.supplier_name || 'N/A'}`,
+    `Total: ${mindeeData.total_amount || 0} ${mindeeData.currency || 'EUR'}`
+  ];
+  
+  if (mindeeData.date) {
+    notes.push(`Fecha emisión: ${mindeeData.date}`);
+  }
+  
+  return notes.join('\n');
+}
+
+// Función auxiliar para calcular subtotal
+function calculateSubtotal(items: any[]): number {
+  return items.reduce((sum, item) => sum + (item.total_amount || 0), 0);
+}
+
+// Función auxiliar para calcular impuestos
+function calculateTaxAmount(mindeeData: any): number {
+  const total = parseFloat(mindeeData.total_amount) || 0;
+  const totalNet = parseFloat(mindeeData.total_net) || 0;
+  return Math.max(total - totalNet, 0);
+}
+
+// Función auxiliar para extraer tasa de impuesto
+function extractTaxRate(item: any): number {
+  if (item.tax_rate) return parseFloat(item.tax_rate);
+  if (item.tax_amount && item.total_amount) {
+    const rate = (parseFloat(item.tax_amount) / parseFloat(item.total_amount)) * 100;
+    return Math.round(rate * 100) / 100; // Redondear a 2 decimales
+  }
+  return 21; // IVA por defecto en España
+}
+
+// Función auxiliar para limpiar nombre de item
+function sanitizeItemName(name: string): string {
+  if (!name || name.trim().length === 0) return 'Producto/Servicio';
+  return name.trim().substring(0, 100); // Limitar a 100 caracteres
+}
+
+// Función auxiliar para manejar respuesta de Holded
+async function handleHoldedResponse(response: Response): Promise<any> {
+  const LOG_PREFIX = '🟢 [HOLDED]';
+  
+  // Primero obtener el texto de la respuesta
+  const responseText = await response.text();
+  console.log(`${LOG_PREFIX} Respuesta recibida - Status: ${response.status}, Content-Type: ${response.headers.get('content-type')}`);
+  console.log(`${LOG_PREFIX} Respuesta (primeros 500 chars):`, responseText.substring(0, 500));
+  
+  if (!response.ok) {
+    console.error(`${LOG_PREFIX} Error HTTP ${response.status}:`, responseText);
+    
+    let errorMessage = `Error ${response.status}`;
+    
+    // Verificar si la respuesta es HTML (error de página web)
+    if (responseText.includes('<html') || responseText.includes('<!DOCTYPE') || responseText.includes('<div')) {
+      console.error(`${LOG_PREFIX} Respuesta HTML detectada - posible error de endpoint o autenticación`);
+      
+      switch (response.status) {
+        case 401:
+          errorMessage = 'API Key inválida - Verifica tus credenciales de Holded';
+          break;
+        case 403:
+          errorMessage = 'Acceso denegado - Verifica los permisos de tu API Key';
+          break;
+        case 404:
+          errorMessage = 'Endpoint no encontrado - Verifica la configuración de la API';
+          break;
+        case 500:
+        case 502:
+        case 503:
+          errorMessage = 'Error del servidor de Holded - Intenta nuevamente más tarde';
+          break;
+        default:
+          errorMessage = 'Holded devolvió una página web en lugar de datos JSON - Verifica tu API Key y configuración';
+      }
+    } else {
+      // Intentar parsear como JSON si no es HTML
+      try {
+        const errorJson = JSON.parse(responseText);
+        errorMessage = errorJson.message || errorJson.error || responseText;
+      } catch {
+        // Si tampoco es JSON válido, usar el texto como está
+        errorMessage = responseText || errorMessage;
+      }
+    }
+    
+    throw new Error(errorMessage);
+  }
+
+  // Verificar si la respuesta exitosa es HTML (no debería pasar)
+  if (responseText.includes('<html') || responseText.includes('<!DOCTYPE') || responseText.includes('<div')) {
+    console.error(`${LOG_PREFIX} ⚠️ Respuesta exitosa (${response.status}) pero contiene HTML:`, responseText.substring(0, 200));
+    throw new Error('Holded devolvió HTML en lugar de JSON - Posible problema con el endpoint o datos enviados');
+  }
+
+  // Verificar si la respuesta está vacía
+  if (!responseText.trim()) {
+    console.error(`${LOG_PREFIX} Respuesta vacía`);
+    throw new Error('Holded devolvió una respuesta vacía');
+  }
+
+  // Intentar parsear JSON
+  let responseData;
+  try {
+    responseData = JSON.parse(responseText);
+    console.log(`${LOG_PREFIX} ✅ JSON válido recibido`);
+  } catch (parseError) {
+    console.error(`${LOG_PREFIX} Error parseando JSON:`, parseError);
+    console.error(`${LOG_PREFIX} Respuesta que falló al parsear:`, responseText);
+    throw new Error(`Respuesta inválida de Holded - No es JSON válido: ${parseError instanceof Error ? parseError.message : 'Error desconocido'}`);
+  }
+  
+  // Validar respuesta exitosa
+  if (!responseData || (!responseData.id && !responseData.receiptId)) {
+    console.error(`${LOG_PREFIX} Respuesta inesperada:`, responseData);
+    throw new Error('Respuesta inesperada de Holded - La factura pudo no haberse creado correctamente');
+  }
+
+  return responseData;
+}
+
+// Función auxiliar para formatear errores de Holded
+function formatHoldedError(error: any): string {
+  const LOG_PREFIX = '🟢 [HOLDED]';
+  
+  if (error instanceof Error) {
+    if (error.name === 'AbortError') {
+      return 'Timeout conectando con Holded - El servidor no respondió a tiempo';
+    }
+    
+    if (error.message.includes('API Key')) {
+      return 'Error de API Key con Holded - Verifica tus credenciales';
+    }
+    
+    if (error.message.includes('fetch')) {
+      return 'Error de conexión con Holded - Verifica tu conexión a internet';
+    }
+    
+    return error.message;
+  }
+  
+  console.error(`${LOG_PREFIX} Error no reconocido:`, error);
+  return 'Error desconocido en Holded';
 }
 
 // Función para categorizar gastos y determinar cuenta contable

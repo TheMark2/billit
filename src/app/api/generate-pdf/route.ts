@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generatePdfWithApiTemplate } from '@/app/api/upload-receipt/route';
+import { generatePdfWithPuppeteer } from '@/lib/pdf-generator';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generar el PDF usando la función existente
-    const pdfResult = await generatePdfWithApiTemplate(mindeeData, userId);
+    const pdfResult = await generatePdfWithPuppeteer(mindeeData, userId);
     
     if (!pdfResult.success) {
       return NextResponse.json(

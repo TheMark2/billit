@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { generatePdfWithApiTemplate } from '@/app/api/upload-receipt/route';
+import { generatePdfWithPuppeteer } from '@/lib/pdf-generator';
 
 export async function GET(request: NextRequest) {
   try {
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
       }
       
       // Generar el PDF
-      const pdfResult = await generatePdfWithApiTemplate(mindeeData, receipt.user_id);
+      const pdfResult = await generatePdfWithPuppeteer(mindeeData, receipt.user_id);
       
       if (!pdfResult.success) {
         console.error('Error generando PDF on-demand:', pdfResult.error);

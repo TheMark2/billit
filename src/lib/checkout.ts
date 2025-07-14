@@ -6,8 +6,6 @@ import { createClient } from '@supabase/supabase-js';
 // Función para iniciar proceso de checkout
 export async function initiateCheckout(priceId: string) {
   try {
-    console.log('🚀 Initiating checkout for price:', priceId);
-
     // Verificar sesión del usuario
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -33,11 +31,8 @@ export async function initiateCheckout(priceId: string) {
     const data = await response.json();
 
     if (!response.ok) {
-      console.error('❌ Checkout session creation failed:', data);
       throw new Error(data.error || 'Error en checkout');
     }
-
-    console.log('✅ Checkout session created:', data.sessionId);
 
     // Obtener cliente de Stripe
     const stripe = await getStripe();
@@ -51,12 +46,10 @@ export async function initiateCheckout(priceId: string) {
     });
 
     if (error) {
-      console.error('❌ Redirect to checkout failed:', error);
       throw error;
     }
 
   } catch (error) {
-    console.error('❌ Error en checkout:', error);
     throw error;
   }
 }
@@ -64,8 +57,6 @@ export async function initiateCheckout(priceId: string) {
 // Función para abrir el portal de cliente
 export async function openCustomerPortal() {
   try {
-    console.log('🚀 Opening customer portal');
-
     // Verificar sesión del usuario
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -88,17 +79,13 @@ export async function openCustomerPortal() {
     const data = await response.json();
 
     if (!response.ok) {
-      console.error('❌ Portal session creation failed:', data);
       throw new Error(data.error || 'Error abriendo portal');
     }
-
-    console.log('✅ Portal session created, redirecting...');
 
     // Redirigir al portal
     window.location.href = data.url;
 
   } catch (error) {
-    console.error('❌ Error abriendo portal:', error);
     throw error;
   }
 }
@@ -135,7 +122,6 @@ export async function getCurrentPlan() {
     return profile;
 
   } catch (error) {
-    console.error('❌ Error getting current plan:', error);
     return null;
   }
 }
@@ -164,7 +150,6 @@ export async function hasActiveSubscription(): Promise<boolean> {
            ['active', 'trialing'].includes(profile.subscription_status);
 
   } catch (error) {
-    console.error('❌ Error checking subscription status:', error);
     return false;
   }
 }
@@ -195,10 +180,9 @@ export async function isTrialActive(): Promise<boolean> {
       return trialEnd > now;
     }
 
-    return false;
-
+        return false;
+    
   } catch (error) {
-    console.error('❌ Error checking trial status:', error);
     return false;
   }
 }
@@ -231,10 +215,9 @@ export async function getTrialDaysRemaining(): Promise<number> {
       return Math.max(0, diffDays);
     }
 
-    return 0;
-
+        return 0;
+    
   } catch (error) {
-    console.error('❌ Error getting trial days remaining:', error);
     return 0;
   }
 } 

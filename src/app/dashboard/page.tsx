@@ -62,6 +62,7 @@ const MetricBox = ({ icon, label, value }: { icon: React.ReactNode; label: strin
 export default function DashboardPage() {
   const [metrics, setMetrics] = useState({
     totalReceipts: 0,
+    totalProcessed: 0, // Nuevo: total procesados incluyendo eliminados
     totalComments: 0,
     totalShares: 0,
     engagement: 0,
@@ -69,10 +70,13 @@ export default function DashboardPage() {
   const [dailyStats, setDailyStats] = useState<Array<{
     date: string;
     count: number;
+    rawDate: string;
+    isToday: boolean; // Nuevo: indicador de día actual
   }>>([]);
   const [hoveredData, setHoveredData] = useState<{
     date: string;
     count: number;
+    isToday: boolean;
   } | null>(null);
   const [chartPeriod, setChartPeriod] = useState<'weekly' | 'monthly' | 'quarterly'>('weekly');
   const [buttonWidths, setButtonWidths] = useState<Record<string, number>>({});
@@ -117,17 +121,17 @@ export default function DashboardPage() {
     switch (period) {
       case 'weekly':
         daysBack = 7;
-        dateFormat = { weekday: 'short' };
+        dateFormat = { weekday: 'short', day: 'numeric' };
         groupBy = 'day';
         break;
       case 'monthly':
         daysBack = 30;
-        dateFormat = { day: 'numeric' };
+        dateFormat = { day: 'numeric', month: 'short' };
         groupBy = 'day';
         break;
       case 'quarterly':
         daysBack = 90;
-        dateFormat = { month: 'short' };
+        dateFormat = { month: 'short', year: '2-digit' };
         groupBy = 'month';
         break;
     }
@@ -135,19 +139,29 @@ export default function DashboardPage() {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - daysBack);
 
+    // Obtener empresa_id del perfil
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("empresa_id, recibos_mes_actual")
+      .eq("id", uid)
+      .single();
+    const empId = profile?.empresa_id;
+
+    // Obtener recibos existentes para el período
     const { data: receipts } = await supabase
       .from("receipts")
       .select("created_at")
-      .eq("user_id", uid)
+      .or(`user_id.eq.${uid}${empId ? ",empresa_id.eq." + empId : ""}`)
       .gte("created_at", startDate.toISOString())
       .order("created_at", { ascending: true });
 
     // Crear un mapa de fechas con conteos inicializados a 0
     const dateMap = new Map();
     const datesList: string[] = [];
+    const today = new Date().toISOString().split('T')[0];
     
     if (period === 'weekly') {
-      // Para semanal, mostrar los últimos 7 días en orden
+      // Para semanal, mostrar los últimos 7 días en orden cronológico
       for (let i = 6; i >= 0; i--) {
         const date = new Date();
         date.setDate(date.getDate() - i);
@@ -156,7 +170,7 @@ export default function DashboardPage() {
         dateMap.set(dateStr, 0);
       }
     } else if (period === 'monthly') {
-      // Para mensual, mostrar los últimos 30 días en orden
+      // Para mensual, mostrar los últimos 30 días en orden cronológico
       for (let i = 29; i >= 0; i--) {
         const date = new Date();
         date.setDate(date.getDate() - i);
@@ -165,7 +179,7 @@ export default function DashboardPage() {
         dateMap.set(dateStr, 0);
       }
     } else {
-      // Para trimestral, agrupar por meses (últimos 3 meses) en orden
+      // Para trimestral, agrupar por meses (últimos 3 meses) en orden cronológico
       for (let i = 2; i >= 0; i--) {
         const date = new Date();
         date.setMonth(date.getMonth() - i);
@@ -196,18 +210,20 @@ export default function DashboardPage() {
       }
     });
 
-    // Convertir a array manteniendo el orden correcto
+    // Convertir a array manteniendo el orden cronológico correcto
     const chartData = datesList.map(dateStr => {
       const count = dateMap.get(dateStr) || 0;
       const date = new Date(dateStr);
+      const isToday = dateStr === today;
+      
       return {
         date: date.toLocaleDateString('es-ES', dateFormat),
         count,
-        rawDate: dateStr // Añadir fecha raw para debugging
+        rawDate: dateStr,
+        isToday // Indicador de día actual
       };
     });
 
-    console.log('Chart data generated:', chartData); // Debug log
     setDailyStats(chartData);
     setLoadingChart(false);
   }, []);
@@ -229,32 +245,28 @@ export default function DashboardPage() {
       return;
     }
 
-    // 2. Obtener empresa_id del perfil para poder filtrar recibos
+    // 2. Obtener empresa_id del perfil y recibos procesados
     const { data: profile } = await supabase
       .from("profiles")
-      .select("empresa_id")
+      .select("empresa_id, recibos_mes_actual")
       .eq("id", uid)
       .single();
     const empId = profile?.empresa_id as string | undefined;
+    const recibosProcessed = profile?.recibos_mes_actual || 0;
 
-    // 3. Obtener el total de recibos para métricas
+    // 3. Obtener el total de recibos actuales para métricas
     const { data: receiptsRaw, error: receiptsErr } = await supabase
       .from("receipts")
       .select("id")
       .or(`user_id.eq.${uid}${empId ? ",empresa_id.eq." + empId : ""}`);
 
     if (receiptsErr) {
-      console.error("Supabase receipts error", receiptsErr);
-      console.error("Error details:", {
-        message: receiptsErr.message,
-        details: receiptsErr.details,
-        hint: receiptsErr.hint,
-        code: receiptsErr.code
-      });
+      // Error silencioso para producción
     } else {
       setMetrics((prev) => ({
         ...prev,
         totalReceipts: (receiptsRaw || []).length,
+        totalProcessed: recibosProcessed, // Total procesados incluyendo eliminados
       }));
     }
 
@@ -341,26 +353,7 @@ export default function DashboardPage() {
     </div>
   );
 
-  const ChartSkeleton = () => {
-    // Alturas fijas para evitar parpadeos
-    const barHeights = [40, 60, 35, 80, 50, 70, 45];
-    
-    return (
-      <div className="h-[120px] w-full bg-neutral-50 rounded-lg flex items-end justify-between p-4 border">
-        {barHeights.map((height, i) => (
-          <div 
-            key={i} 
-            className="bg-neutral-200 rounded-sm"
-            style={{ 
-              height: `${height}px`,
-              width: '8px',
-              animation: `pulse 2s infinite ${i * 0.1}s`
-            }}
-          />
-        ))}
-      </div>
-    );
-  };
+
 
   return (
     <div className="space-y-8">
@@ -374,26 +367,29 @@ export default function DashboardPage() {
               </div>
               
               <div className="space-y-6">
-                {/* Número total de recibos - dinámico */}
+                {/* Número total de recibos procesados - dinámico */}
                 <div className="flex items-center justify-between">
                   {loadingMetrics ? (
                     <NumberSkeleton />
                   ) : (
                     <div className="flex items-center gap-4">
                       <div className="flex flex-col">
-                        <span className="text-sm text-neutral-500">Total de recibos</span>
+                        <span className="text-sm text-neutral-500">Recibos procesados</span>
                         <span className="text-2xl font-semibold text-neutral-800">
-                          {metrics.totalReceipts.toLocaleString()}
+                          {metrics.totalProcessed.toLocaleString()}
+                        </span>
+                        <span className="text-xs text-neutral-400 mt-1">
+                          {metrics.totalReceipts} activos • {metrics.totalProcessed - metrics.totalReceipts} eliminados
                         </span>
                       </div>
                       
                       {/* Texto variable que cambia con hover */}
-                      <div className="flex flex-col min-w-[120px]">
+                      <div className="flex flex-col min-w-[140px]">
                         <span className="text-xs text-neutral-400">
-                          {hoveredData ? `${hoveredData.date}` : 'Resumen del período'}
+                          {hoveredData ? (hoveredData.isToday ? 'Hoy' : hoveredData.date) : 'Resumen del período'}
                         </span>
                         <span className="text-sm font-medium text-neutral-600">
-                          {hoveredData ? `${hoveredData.count} recibos` : `${metrics.totalReceipts} total`}
+                          {hoveredData ? `${hoveredData.count} recibos` : `${metrics.totalProcessed} procesados`}
                         </span>
                       </div>
                     </div>
@@ -463,65 +459,136 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Gráfico de actividad - ancho completo */}
+                {/* Gráfico de actividad mejorado - ancho completo */}
                 <div className="w-full">
                   {loadingChart ? (
-                    <ChartSkeleton />
+                    <div className="h-[160px] w-full bg-neutral-50 rounded-lg flex items-center justify-center border">
+                      <div className="flex items-center gap-2 text-neutral-500">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
+                        <span className="text-sm">Cargando gráfico...</span>
+                      </div>
+                    </div>
                   ) : (
-                    <div className="h-[120px] w-full">
+                    <div className="h-[160px] w-full"> {/* Aumentado la altura */}
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart 
                           data={dailyStats}
                           onMouseMove={(event: any) => {
-                            console.log('Mouse move event:', event); // Debug log
                             if (event && event.activePayload && event.activePayload.length > 0) {
                               const payload = event.activePayload[0].payload;
                               const newHoveredData = {
                                 date: payload.date,
-                                count: payload.count
+                                count: payload.count,
+                                isToday: payload.isToday
                               };
-                              console.log('Setting hovered data:', newHoveredData); // Debug log
                               setHoveredData(newHoveredData);
                             }
                           }}
                           onMouseLeave={() => {
-                            console.log('Mouse leave'); // Debug log
                             setHoveredData(null);
                           }}
                           style={{ outline: 'none' }}
-                          margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
+                          margin={{ top: 10, right: 10, left: 10, bottom: 30 }}
                         >
                           <defs>
                             <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15}/>
                               <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                            </linearGradient>
+                            <linearGradient id="colorCountToday" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
+                              <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                             </linearGradient>
                           </defs>
                           <CartesianGrid 
-                            strokeDasharray="0" 
+                            strokeDasharray="3 3" 
                             stroke="#f3f4f6" 
-                            vertical={true} 
-                            horizontal={false}
+                            vertical={false} 
+                            horizontal={true}
                           />
                           <XAxis 
                             dataKey="date" 
-                            tick={{ fontSize: 12, fill: '#9ca3af' }}
+                            tick={{ fontSize: 11, fill: '#6b7280' }}
                             axisLine={{ stroke: '#e5e7eb', strokeWidth: 1 }}
                             tickLine={{ stroke: '#e5e7eb', strokeWidth: 1 }}
-                            height={25}
+                            height={40}
+                            angle={-45}
+                            textAnchor="end"
+                            interval={0}
                           />
-                          <YAxis hide />
+                          <YAxis 
+                            hide
+                            domain={[0, 'dataMax + 1']}
+                          />
                           <Tooltip 
-                            content={() => null}
-                            cursor={{ stroke: '#e5e7eb', strokeWidth: 1, strokeDasharray: '3 3' }}
-                            active={true}
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                return (
+                                  <div className="bg-white p-3 rounded-lg shadow-lg border border-neutral-200 animate-fade-in">
+                                    <p className="text-sm font-medium text-neutral-800">
+                                      {data.isToday ? 'Hoy' : data.date}
+                                    </p>
+                                    <p className="text-sm text-neutral-600">
+                                      {data.count} recibos procesados
+                                    </p>
+                                    {data.isToday && (
+                                      <div className="flex items-center gap-1 mt-1">
+                                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                        <span className="text-xs text-green-600">Día actual</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                            cursor={{ 
+                              stroke: '#3b82f6', 
+                              strokeWidth: 2, 
+                              strokeDasharray: '5 5',
+                              strokeOpacity: 0.7
+                            }}
                           />
                           <Area
                             type="monotone"
                             dataKey="count"
                             stroke="#3b82f6"
-                            strokeWidth={2}
+                            strokeWidth={2.5}
                             fill="url(#colorCount)"
+                            fillOpacity={0.6}
+                            dot={(props: any) => {
+                              const { cx, cy, payload } = props;
+                              if (payload.isToday) {
+                                return (
+                                  <g>
+                                    <circle 
+                                      cx={cx} 
+                                      cy={cy} 
+                                      r={6} 
+                                      fill="#10b981" 
+                                      stroke="#ffffff" 
+                                      strokeWidth={2}
+                                      className="animate-pulse"
+                                    />
+                                    <circle 
+                                      cx={cx} 
+                                      cy={cy} 
+                                      r={3} 
+                                      fill="#ffffff" 
+                                    />
+                                  </g>
+                                );
+                              }
+                              return <g />;
+                            }}
+                            activeDot={{ 
+                              r: 5, 
+                              fill: '#3b82f6',
+                              stroke: '#ffffff',
+                              strokeWidth: 2,
+                              className: 'animate-pulse'
+                            }}
                           />
                         </AreaChart>
                       </ResponsiveContainer>
@@ -538,143 +605,85 @@ export default function DashboardPage() {
 
         {/* Segunda columna - Información de la empresa y plan */}
         <div className="space-y-6">
+          {/* Plan status */}
           <Suspense fallback={<PlanStatusSkeleton />}>
             <PlanStatus />
           </Suspense>
 
-          <Card className="p-6 rounded-2xl border bg-white shadow-none">
+          {/* Información de la empresa */}
+          <Card className="p-6 rounded-2xl border-0 bg-white shadow-none border">
             {loadingCompany ? (
               <CompanyInfoSkeleton />
             ) : (
               <>
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-lg font-semibold text-neutral-900">Empresa</h2>
-                  </div>
-                  
-                  {companyConnected && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => router.push("/dashboard/empresa")}
-                      className="h-8 px-3"
-                    >
-                      <IconEdit className="w-4 h-4 mr-1" />
-                      Editar
-                    </Button>
-                  )}
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-neutral-900">Información de la empresa</h2>
+                  <Button 
+                    onClick={() => router.push('/dashboard/empresa')}
+                    variant="outline"
+                    size="sm"
+                    className="text-xs"
+                  >
+                    <IconEdit className="w-3 h-3 mr-1" />
+                    Editar
+                  </Button>
                 </div>
-
+                
                 {companyConnected ? (
                   <div className="space-y-4">
-                    {/* Información principal de la empresa */}
-                    <div className="rounded-lg border border-neutral-200 p-4 bg-white relative overflow-hidden">
-                      {/* Puntos blur radial degradado */}
-                      <div className="absolute inset-0 overflow-hidden">
-                        <div 
-                          className="absolute -top-4 -left-4 w-16 h-16 rounded-full opacity-30"
-                          style={{
-                            background: 'radial-gradient(circle, #10b981 0%, #34d399 50%, transparent 70%)',
-                            filter: 'blur(20px)'
-                          }}
-                        />
-                        <div 
-                          className="absolute top-2 right-8 w-12 h-12 rounded-full opacity-25"
-                          style={{
-                            background: 'radial-gradient(circle, #3b82f6 0%, #60a5fa 50%, transparent 70%)',
-                            filter: 'blur(15px)'
-                          }}
-                        />
-                        <div 
-                          className="absolute bottom-0 left-1/3 w-20 h-20 rounded-full opacity-20"
-                          style={{
-                            background: 'radial-gradient(circle, #8b5cf6 0%, #a78bfa 50%, transparent 70%)',
-                            filter: 'blur(25px)'
-                          }}
-                        />
-                        <div 
-                          className="absolute -bottom-2 -right-2 w-14 h-14 rounded-full opacity-25"
-                          style={{
-                            background: 'radial-gradient(circle, #f59e0b 0%, #fbbf24 50%, transparent 70%)',
-                            filter: 'blur(18px)'
-                          }}
-                        />
+                    <div className="grid grid-cols-1 gap-3">
+                      <div className="flex items-center gap-2 text-sm">
+                        <IconBuildingCog className="w-4 h-4 text-neutral-500" />
+                        <span className="text-neutral-700">{companyInfo!.nombre}</span>
                       </div>
                       
-                      <div className="flex items-start justify-between relative z-10">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-neutral-900 text-base mb-2">
-                            {companyInfo?.nombre}
-                          </h3>
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm text-neutral-600 font-mono">
-                              {showCif ? companyInfo?.cif : '••••••••••'}
-                            </p>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setShowCif(!showCif)}
-                              className="h-6 w-6 p-0 text-neutral-500 hover:text-neutral-700"
-                            >
-                              {showCif ? (
-                                <IconEyeOff className="h-3 w-3" />
-                              ) : (
-                                <IconEye className="h-3 w-3" />
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                        <Badge variant="outline" className="bg-emerald-100 border-emerald-200 text-emerald-800 text-xs">
-                          Activa
-                        </Badge>
-                      </div>
-                    </div>
-                    
-                    {/* Detalles de contacto */}
-                    <div className="space-y-3">
-                      <div className="flex items-start gap-3 p-3 rounded-lg bg-neutral-50">
-                        <IconLocationPin className="w-4 h-4 text-neutral-500 mt-0.5 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-neutral-900 leading-relaxed">
-                            {companyInfo?.direccion}
-                          </p>
-                        </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <IconUserPlus className="w-4 h-4 text-neutral-500" />
+                        <span className="text-neutral-700">
+                          {showCif ? companyInfo!.cif : '••••••••'}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowCif(!showCif)}
+                          className="h-5 w-5 p-0 border-0 bg-transparent hover:bg-neutral-100"
+                        >
+                          {showCif ? <IconEyeOff className="w-3 h-3" /> : <IconEye className="w-3 h-3" />}
+                        </Button>
                       </div>
                       
-                      <div className="flex items-center gap-3 p-3 rounded-lg bg-neutral-50">
-                        <IconMail className="w-4 h-4 text-neutral-500 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-neutral-900 truncate">
-                            {companyInfo?.email}
-                          </p>
+                      {companyInfo!.email && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <IconMail className="w-4 h-4 text-neutral-500" />
+                          <span className="text-neutral-700">{companyInfo!.email}</span>
                         </div>
-                      </div>
+                      )}
                       
-                      {companyInfo?.telefono && (
-                        <div className="flex items-center gap-3 p-3 rounded-lg bg-neutral-50">
-                          <IconPhone className="w-4 h-4 text-neutral-500 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm text-neutral-900">
-                              {companyInfo?.telefono}
-                            </p>
-                          </div>
+                      {companyInfo!.telefono && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <IconPhone className="w-4 h-4 text-neutral-500" />
+                          <span className="text-neutral-700">{companyInfo!.telefono}</span>
+                        </div>
+                      )}
+                      
+                      {companyInfo!.direccion && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <IconLocationPin className="w-4 h-4 text-neutral-500" />
+                          <span className="text-neutral-700">{companyInfo!.direccion}</span>
                         </div>
                       )}
                     </div>
                   </div>
                 ) : (
-                  <div className="text-center border bg-neutral-50 rounded-lg p-8">
-                    <h3 className="text-base font-semibold text-neutral-900 mb-2">
-                      Configura tu empresa
-                    </h3>
-                    <p className="text-sm text-neutral-600 mb-6 max-w-sm mx-auto leading-relaxed">
-                      Añade los datos de tu empresa para generar facturas automáticamente con tus datos.
+                  <div className="text-center py-8">
+                    <IconBuildingCog className="w-12 h-12 text-neutral-400 mx-auto mb-4" />
+                    <p className="text-sm text-neutral-500 mb-4">
+                      No hay información de empresa configurada
                     </p>
                     <Button 
-                      size="sm"
+                      onClick={() => router.push('/dashboard/empresa')}
                       variant="outline"
-                      onClick={() => router.push("/dashboard/empresa")}
-                      className="text-xs"
+                      size="sm"
                     >
                       <IconUserPlus className="w-4 h-4 mr-2" />
                       Configurar empresa

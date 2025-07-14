@@ -293,13 +293,6 @@ export default function RecibosPage() {
       const { data, error } = await query;
 
       if (error) {
-        console.error("Supabase receipts error", error);
-        console.error("Error details:", {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        });
         // Solo mostrar error si es crítico
         if (error.message.includes('RLS') || error.message.includes('permission')) {
           setError('Error de permisos. Intenta recargar la página.');
@@ -332,7 +325,6 @@ export default function RecibosPage() {
 
       setLoadingData(false);
     } catch (error) {
-      console.error("Error inesperado al cargar recibos:", error);
       setError(`Error inesperado: ${error instanceof Error ? error.message : 'Error desconocido'}`);
       setReceipts([]);
       setLoadingData(false);
@@ -429,7 +421,6 @@ export default function RecibosPage() {
       setSelectedReceipts([]);
       setIsDeleteDialogOpen(false);
     } catch (error) {
-      console.error('Error deleting receipts:', error);
       setError('Error al eliminar los recibos');
     }
     setLoadingData(false);

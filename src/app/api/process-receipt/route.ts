@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { generatePdfWithApiTemplate, processWithMindee, getAllCredentials, sendToOdoo, sendToHolded } from '@/app/api/upload-receipt/route';
+import { processWithMindee, getAllCredentials, sendToOdoo, sendToHolded } from '@/app/api/upload-receipt/route';
+import { generatePdfWithPuppeteer } from '@/lib/pdf-generator';
 
 // Variables de entorno para Twilio
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
@@ -158,9 +159,9 @@ async function processFileFromWhatsApp(
     
     // Generar PDF
     integrationPromises.push(
-      generatePdfWithApiTemplate(mindeeResult.data, userId)
-        .then(result => ({ type: 'pdf', result }))
-        .catch(error => ({ type: 'pdf', result: { success: false, error: error.message } }))
+      generatePdfWithPuppeteer(mindeeResult.data, userId)
+        .then((result: any) => ({ type: 'pdf', result }))
+        .catch((error: any) => ({ type: 'pdf', result: { success: false, error: error.message } }))
     );
     
     // Enviar a Odoo si está configurado

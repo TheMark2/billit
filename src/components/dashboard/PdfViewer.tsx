@@ -52,7 +52,6 @@ export default function PdfViewer({ receiptId, receiptInfo }: PdfViewerProps) {
       setPdfData(data.data);
       setPdfUrl(data.data.pdf_url);
     } catch (err) {
-      console.error('Error fetching PDF:', err);
       setError(err instanceof Error ? err.message : 'Error desconocido');
     } finally {
       setIsLoading(false);
@@ -92,7 +91,6 @@ export default function PdfViewer({ receiptId, receiptInfo }: PdfViewerProps) {
       setPdfData(data.data);
       setPdfUrl(data.data.pdf_url);
     } catch (err) {
-      console.error('Error regenerating PDF:', err);
       setError(err instanceof Error ? err.message : 'Error desconocido');
     } finally {
       setIsLoading(false);
