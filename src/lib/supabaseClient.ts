@@ -1,3 +1,3 @@
-import { supabaseBrowser } from '@/utils/supabaseClient';
+import { supabaseService } from '@/utils/supabaseClient';
 
-export const supabase = supabaseBrowser(); 
+export const supabase = supabaseService(); 

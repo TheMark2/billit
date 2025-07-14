@@ -191,25 +191,94 @@ async function downloadMedia(mediaUrl: string): Promise<Buffer> {
 // Función para procesar recibo
 async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaType: string) {
   try {
-    // Crear FormData para enviar al endpoint de procesamiento
-    const formData = new FormData();
-    const blob = new Blob([mediaBuffer], { type: mediaType });
-    formData.append('file', blob, 'receipt.jpg');
-    formData.append('phoneNumber', phoneNumber);
-
-    // Llamar al endpoint existente de procesamiento
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'https://tu-dominio.vercel.app'}/api/upload-receipt`, {
-      method: 'POST',
-      body: formData
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to process receipt: ${response.statusText}`);
+    // Crear un File object desde el buffer
+    const file = new File([mediaBuffer], 'receipt.jpg', { type: mediaType });
+    
+    // Llamar directamente a la función de procesamiento de Mindee
+    const mindeeResult = await processWithMindee(file);
+    
+    if (!mindeeResult.success) {
+      throw new Error(mindeeResult.error || 'Error procesando factura');
     }
-
-    return await response.json();
+    
+    // Obtener el usuario por número de teléfono
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, empresa_id')
+      .eq('phone_number', phoneNumber)
+      .single();
+    
+    if (!profile) {
+      throw new Error('Usuario no encontrado');
+    }
+    
+    // Guardar el recibo en la base de datos
+    const { data: receipt, error } = await supabase
+      .from('receipts')
+      .insert({
+        user_id: profile.id,
+        empresa_id: profile.empresa_id,
+        processed_data: mindeeResult.data,
+        original_filename: 'whatsapp_receipt.jpg',
+        processing_status: 'completed',
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+    
+    if (error) {
+      throw new Error(`Error guardando recibo: ${error.message}`);
+    }
+    
+    return {
+      success: true,
+      receiptId: receipt.id,
+      data: mindeeResult.data
+    };
+    
   } catch (error) {
     throw error;
+  }
+}
+
+// Función para procesar con Mindee (importada desde upload-receipt)
+async function processWithMindee(file: File): Promise<{
+  success: boolean;
+  data?: any;
+  error?: string;
+}> {
+  try {
+    const formData = new FormData();
+    formData.append('document', file);
+    
+    const response = await fetch('https://api.mindee.net/v1/products/mindee/invoices/v4/predict', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${process.env.MINDEE_API_KEY || '1d6ac579ba024d9fb6c0ebcffdf2b5a0'}`
+      },
+      body: formData
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Mindee API error: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    
+    if (!result.document || !result.document.inference || !result.document.inference.prediction) {
+      throw new Error('Respuesta inválida de Mindee API');
+    }
+    
+    return {
+      success: true,
+      data: result.document.inference.prediction
+    };
+    
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Error desconocido'
+    };
   }
 }
 
@@ -375,12 +444,24 @@ export async function POST(request: NextRequest) {
                   const mediaBuffer = await downloadMedia(mediaData.url);
                   
                   // Procesar recibo
-                  const result = await processReceipt(phoneNumber, mediaBuffer, message.image.mime_type);
-                  
-                  // Obtener integraciones y enviar menú
-                  const integrations = await getUserIntegrations(phoneNumber);
-                  const menu = generateIntegrationsMenu(integrations, phoneNumber);
-                  await sendWhatsAppMessage(phoneNumber, menu.message);
+                  try {
+                    const result = await processReceipt(phoneNumber, mediaBuffer, message.image.mime_type);
+                    
+                    if (result.success) {
+                      // Obtener integraciones y enviar menú
+                      const integrations = await getUserIntegrations(phoneNumber);
+                      const menu = generateIntegrationsMenu(integrations, phoneNumber);
+                      await sendWhatsAppMessage(phoneNumber, menu.message);
+                    } else {
+                      await sendWhatsAppMessage(phoneNumber, 
+                        `❌ *Error al procesar factura*\n\nHubo un problema procesando tu factura. Inténtalo nuevamente.`
+                      );
+                    }
+                  } catch (error) {
+                    await sendWhatsAppMessage(phoneNumber, 
+                      `❌ *Error al procesar factura*\n\nHubo un problema procesando tu factura. Inténtalo nuevamente.`
+                    );
+                  }
                 }
               }
             }
@@ -425,12 +506,24 @@ export async function POST(request: NextRequest) {
         const mediaBuffer = await downloadMedia(message.MediaUrl0);
         
         // Procesar recibo
-        const result = await processReceipt(phoneNumber, mediaBuffer, message.MediaContentType0);
-        
-        // Obtener integraciones y enviar menú
-        const integrations = await getUserIntegrations(phoneNumber);
-        const menu = generateIntegrationsMenu(integrations, phoneNumber);
-        await sendWhatsAppMessage(phoneNumber, menu.message);
+        try {
+          const result = await processReceipt(phoneNumber, mediaBuffer, message.MediaContentType0);
+          
+          if (result.success) {
+            // Obtener integraciones y enviar menú
+            const integrations = await getUserIntegrations(phoneNumber);
+            const menu = generateIntegrationsMenu(integrations, phoneNumber);
+            await sendWhatsAppMessage(phoneNumber, menu.message);
+          } else {
+            await sendWhatsAppMessage(phoneNumber, 
+              `❌ *Error al procesar factura*\n\nHubo un problema procesando tu factura. Inténtalo nuevamente.`
+            );
+          }
+        } catch (error) {
+          await sendWhatsAppMessage(phoneNumber, 
+            `❌ *Error al procesar factura*\n\nHubo un problema procesando tu factura. Inténtalo nuevamente.`
+          );
+        }
       } else if (message.Body) {
         // Manejar comando de texto
         await handleTextCommand(message.From, message.Body);
