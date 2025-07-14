@@ -326,11 +326,9 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
         total: mindeeResult.data.total_amount || 0,
         moneda: mindeeResult.data.currency || 'EUR',
         estado: 'procesado',
-        file_name: 'whatsapp_receipt.jpg',
-        file_type: 'image/jpeg',
-        status: 'completed',
-        metadatos: mindeeResult.data,
-        created_at: new Date().toISOString()
+        url_archivo: 'whatsapp_receipt.jpg',
+        texto_extraido: JSON.stringify(mindeeResult.data),
+        metadatos: mindeeResult.data
       })
       .select()
       .single();
