@@ -1,4 +1,5 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 import Handlebars from 'handlebars';
 import fs from 'fs';
 import path from 'path';
@@ -36,15 +37,17 @@ async function compileHtmlTemplate(templateData: any): Promise<string> {
   }
 }
 
-// Función para generar PDF usando Puppeteer
+// Función para generar PDF usando Puppeteer con Chromium optimizado para Vercel
 async function generatePdfFromHtml(html: string): Promise<Buffer> {
   let browser;
   
   try {
-    // Configurar Puppeteer
+    // Configurar Puppeteer con chromium optimizado para Vercel
+    const isDev = process.env.NODE_ENV === 'development';
+    
     browser = await puppeteer.launch({
-      headless: true,
-      args: [
+      args: isDev ? [] : [
+        ...chromium.args,
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
@@ -53,7 +56,10 @@ async function generatePdfFromHtml(html: string): Promise<Buffer> {
         '--no-zygote',
         '--single-process',
         '--disable-gpu'
-      ]
+      ],
+      defaultViewport: { width: 1920, height: 1080 },
+      executablePath: isDev ? undefined : await chromium.executablePath(),
+      headless: true
     });
     
     const page = await browser.newPage();
