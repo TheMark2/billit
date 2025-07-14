@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generatePdfWithApiTemplate, processWithMindee, getAllCredentials, sendToOdoo, sendToHolded } from '@/app/api/upload-receipt/route';
 
+// Variables de entorno para Twilio
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+
 // Función para crear un evento SSE
 function createSSEEvent(data: any, event?: string): string {
   const eventData = `data: ${JSON.stringify(data)}\\n\\n`;
@@ -40,7 +44,27 @@ async function processFileFromWhatsApp(
         controller.enqueue(encoder.encode(createSSEEvent({ step: 'download', message: 'Descargando archivo desde WhatsApp...' })));
       }
       
-      const response = await fetch(fileData);
+      // Configurar opciones de fetch
+      const fetchOptions: RequestInit = {};
+      
+      // Si es una URL de Twilio, agregar autenticación básica
+      if (fileData.includes('api.twilio.com')) {
+        console.log('🔐 Detectada URL de Twilio, agregando autenticación...');
+        
+        if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+          throw new Error('Variables de entorno de Twilio no configuradas (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)');
+        }
+        
+        // Crear autenticación básica para Twilio
+        const auth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+        fetchOptions.headers = {
+          'Authorization': `Basic ${auth}`
+        };
+        
+        console.log('🔐 Autenticación Twilio configurada');
+      }
+      
+      const response = await fetch(fileData, fetchOptions);
       
       if (!response.ok) {
         throw new Error(`Error descargando archivo: ${response.status} ${response.statusText}`);
