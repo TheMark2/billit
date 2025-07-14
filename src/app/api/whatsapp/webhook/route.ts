@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseService } from '@/lib/supabaseClient';
 import { checkUserSubscription } from '@/utils/supabaseClient';
 import { processWithMindee } from '@/app/api/upload-receipt/route';
-import { generatePdfWithPuppeteer } from '@/lib/pdf-generator';
 
 interface WhatsAppMessage {
   From: string;
@@ -296,7 +295,7 @@ async function downloadMedia(mediaUrl: string): Promise<Buffer> {
   return buffer;
 }
 
-// Función para procesar recibo
+// Función para procesar recibo (simplificada, reutiliza lógica de upload-receipt)
 async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaType: string) {
   try {
     // Crear un File object desde el buffer
@@ -363,7 +362,7 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
       throw new Error('Usuario no encontrado');
     }
     
-    // Guardar el recibo en la base de datos
+    // Guardar el recibo en la base de datos (similar a upload-receipt)
     console.log('💾 Guardando recibo en base de datos...');
     const { data: receipt, error } = await supabase
       .from('receipts')
@@ -371,14 +370,20 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
         user_id: profile.id,
         empresa_id: profile.empresa_id,
         fecha_emision: mindeeResult.data.date || new Date().toISOString().split('T')[0],
+        fecha_subida: new Date().toISOString().split('T')[0],
         proveedor: mindeeResult.data.supplier_name || 'Desconocido',
-        numero_factura: mindeeResult.data.invoice_number || null,
+        numero_factura: mindeeResult.data.invoice_number || `AUTO-${Date.now()}`,
         total: mindeeResult.data.total_amount || 0,
         moneda: mindeeResult.data.currency || 'EUR',
-        estado: 'procesado',
+        estado: 'pendiente', // Pendiente hasta que se procese integración
         url_archivo: 'whatsapp_receipt.jpg',
         texto_extraido: JSON.stringify(mindeeResult.data),
-        metadatos: mindeeResult.data
+        metadatos: {
+          mindee_data: mindeeResult.data,
+          file_size: mediaBuffer.length,
+          processed_at: new Date().toISOString(),
+          source: 'whatsapp'
+        }
       })
       .select()
       .single();
@@ -390,40 +395,9 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
     
     console.log('✅ Recibo guardado exitosamente con ID:', receipt.id);
     
-    // Generar PDF del recibo
-    console.log('🔄 Generando PDF del recibo...');
-    try {
-      const pdfResult = await generatePdfWithPuppeteer(mindeeResult.data, profile.id);
-      
-      if (pdfResult.success) {
-        console.log('✅ PDF generado exitosamente:', pdfResult.data.download_url);
-        
-        // Actualizar metadatos del recibo con información del PDF
-        const updatedMetadatos = {
-          ...receipt.metadatos,
-          pdf_generation: {
-            download_url: pdfResult.data.download_url,
-            pdf_url: pdfResult.data.pdf_url || pdfResult.data.download_url,
-            generated_at: pdfResult.data.generated_at,
-            status: "success"
-          }
-        };
-        
-        await supabase
-          .from('receipts')
-          .update({ 
-            metadatos: updatedMetadatos,
-            url_archivo: pdfResult.data.download_url 
-          })
-          .eq('id', receipt.id);
-          
-        console.log('✅ Metadatos del recibo actualizados con PDF');
-      } else {
-        console.log('❌ Error generando PDF:', pdfResult.error);
-      }
-    } catch (pdfError) {
-      console.log('❌ Error en generación de PDF:', pdfError);
-    }
+    // Nota: El PDF se generará on-demand cuando se necesite
+    // para evitar problemas con Puppeteer en el webhook de Vercel
+    console.log('✅ Recibo procesado, PDF se generará on-demand cuando se necesite');
     
     return {
       success: true,
@@ -437,6 +411,7 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
 }
 
 // Función processWithMindee importada desde upload-receipt
+// Esta función maneja toda la lógica de procesamiento con Mindee API
 
 // Función para manejar comandos de texto
 async function handleTextCommand(phoneNumber: string, command: string) {
