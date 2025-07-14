@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabaseClient';
+import { getSupabaseService } from '@/lib/supabaseClient';
 import { checkUserSubscription } from '@/utils/supabaseClient';
 
 interface WhatsAppMessage {
@@ -46,6 +46,8 @@ function cleanPhoneNumber(phone: string): string {
 
 // Función para obtener integraciones del usuario
 async function getUserIntegrations(phoneNumber: string) {
+  const supabase = getSupabaseService();
+  
   const { data: profile } = await supabase
     .from('profiles')
     .select('id, empresa_id')
@@ -202,6 +204,8 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
     }
     
     // Obtener el usuario por número de teléfono
+    const supabase = getSupabaseService();
+    
     const { data: profile } = await supabase
       .from('profiles')
       .select('id, empresa_id')
@@ -325,10 +329,25 @@ async function handleTextCommand(phoneNumber: string, command: string) {
           );
           
           // Obtener el recibo más reciente del usuario
+          const supabase = getSupabaseService();
+          
+          const { data: userProfile } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('phone_number', cleanPhone)
+            .single();
+          
+          if (!userProfile) {
+            await sendWhatsAppMessage(cleanPhone, 
+              `❌ *Usuario no encontrado*\n\nNo se pudo encontrar tu perfil.`
+            );
+            return;
+          }
+          
           const { data: recentReceipt } = await supabase
             .from('receipts')
             .select('*')
-            .eq('user_id', (await supabase.from('profiles').select('id').eq('phone_number', cleanPhone).single())?.data?.id)
+            .eq('user_id', userProfile.id)
             .order('created_at', { ascending: false })
             .limit(1)
             .single();
