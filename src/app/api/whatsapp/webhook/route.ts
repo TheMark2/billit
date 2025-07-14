@@ -48,13 +48,49 @@ function cleanPhoneNumber(phone: string): string {
 async function getUserIntegrations(phoneNumber: string) {
   const supabase = getSupabaseService();
   
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('id, empresa_id')
-    .eq('telefono', phoneNumber)
-    .single();
+  // Intentar diferentes formatos del número
+  const phoneFormats = [
+    phoneNumber, // Formato original
+    phoneNumber.replace('whatsapp:', ''), // Quitar prefijo whatsapp:
+    phoneNumber.replace('whatsapp:', '').replace('+', ''), // Quitar whatsapp: y +
+    phoneNumber.replace('+', ''), // Solo quitar +
+    `+34${phoneNumber}`, // Añadir +34
+    phoneNumber.replace('+34', ''), // Quitar +34
+    `+${phoneNumber}`, // Añadir +
+    phoneNumber.replace('+', ''), // Quitar +
+    phoneNumber.replace(/\D/g, '') // Solo números
+  ];
 
-  if (!profile) return [];
+  console.log('🔍 getUserIntegrations - Buscando con número:', phoneNumber);
+  console.log('📱 getUserIntegrations - Formatos a probar:', phoneFormats);
+
+  let profile = null;
+  let foundWithFormat = '';
+
+  // Buscar el usuario con diferentes formatos
+  for (const phoneFormat of phoneFormats) {
+    console.log(`🔎 getUserIntegrations - Probando formato: "${phoneFormat}"`);
+    
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, empresa_id, telefono')
+      .eq('telefono', phoneFormat)
+      .single();
+
+    if (!error && data) {
+      profile = data;
+      foundWithFormat = phoneFormat;
+      console.log(`✅ getUserIntegrations - Usuario encontrado con formato: "${phoneFormat}"`);
+      break;
+    } else {
+      console.log(`❌ getUserIntegrations - No encontrado con formato: "${phoneFormat}"`);
+    }
+  }
+
+  if (!profile) {
+    console.log('❌ getUserIntegrations - Usuario no encontrado');
+    return [];
+  }
 
   const integrations = [];
   
@@ -206,13 +242,47 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
     // Obtener el usuario por número de teléfono
     const supabase = getSupabaseService();
     
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('id, empresa_id')
-      .eq('telefono', phoneNumber)
-      .single();
+    // Intentar diferentes formatos del número
+    const phoneFormats = [
+      phoneNumber, // Formato original
+      phoneNumber.replace('whatsapp:', ''), // Quitar prefijo whatsapp:
+      phoneNumber.replace('whatsapp:', '').replace('+', ''), // Quitar whatsapp: y +
+      phoneNumber.replace('+', ''), // Solo quitar +
+      `+34${phoneNumber}`, // Añadir +34
+      phoneNumber.replace('+34', ''), // Quitar +34
+      `+${phoneNumber}`, // Añadir +
+      phoneNumber.replace('+', ''), // Quitar +
+      phoneNumber.replace(/\D/g, '') // Solo números
+    ];
+
+    console.log('🔍 processReceipt - Buscando con número:', phoneNumber);
+    console.log('📱 processReceipt - Formatos a probar:', phoneFormats);
+
+    let profile = null;
+    let foundWithFormat = '';
+
+    // Buscar el usuario con diferentes formatos
+    for (const phoneFormat of phoneFormats) {
+      console.log(`🔎 processReceipt - Probando formato: "${phoneFormat}"`);
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, empresa_id, telefono')
+        .eq('telefono', phoneFormat)
+        .single();
+
+      if (!error && data) {
+        profile = data;
+        foundWithFormat = phoneFormat;
+        console.log(`✅ processReceipt - Usuario encontrado con formato: "${phoneFormat}"`);
+        break;
+      } else {
+        console.log(`❌ processReceipt - No encontrado con formato: "${phoneFormat}"`);
+      }
+    }
     
     if (!profile) {
+      console.log('❌ processReceipt - Usuario no encontrado');
       throw new Error('Usuario no encontrado');
     }
     
@@ -331,11 +401,44 @@ async function handleTextCommand(phoneNumber: string, command: string) {
           // Obtener el recibo más reciente del usuario
           const supabase = getSupabaseService();
           
-          const { data: userProfile } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('telefono', cleanPhone)
-            .single();
+          // Intentar diferentes formatos del número
+          const phoneFormats = [
+            cleanPhone, // Formato original
+            cleanPhone.replace('whatsapp:', ''), // Quitar prefijo whatsapp:
+            cleanPhone.replace('whatsapp:', '').replace('+', ''), // Quitar whatsapp: y +
+            cleanPhone.replace('+', ''), // Solo quitar +
+            `+34${cleanPhone}`, // Añadir +34
+            cleanPhone.replace('+34', ''), // Quitar +34
+            `+${cleanPhone}`, // Añadir +
+            cleanPhone.replace('+', ''), // Quitar +
+            cleanPhone.replace(/\D/g, '') // Solo números
+          ];
+
+          console.log('🔍 handleTextCommand - Buscando con número:', cleanPhone);
+          console.log('📱 handleTextCommand - Formatos a probar:', phoneFormats);
+
+          let userProfile = null;
+          let foundWithFormat = '';
+
+          // Buscar el usuario con diferentes formatos
+          for (const phoneFormat of phoneFormats) {
+            console.log(`🔎 handleTextCommand - Probando formato: "${phoneFormat}"`);
+            
+            const { data, error } = await supabase
+              .from('profiles')
+              .select('id, telefono')
+              .eq('telefono', phoneFormat)
+              .single();
+
+            if (!error && data) {
+              userProfile = data;
+              foundWithFormat = phoneFormat;
+              console.log(`✅ handleTextCommand - Usuario encontrado con formato: "${phoneFormat}"`);
+              break;
+            } else {
+              console.log(`❌ handleTextCommand - No encontrado con formato: "${phoneFormat}"`);
+            }
+          }
           
           if (!userProfile) {
             await sendWhatsAppMessage(cleanPhone, 
