@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
     const { data: profile } = await supabase
       .from('profiles')
       .select('empresa_id')
-      .eq('phone_number', phoneNumber)
+      .eq('telefono', phoneNumber)
       .single();
     
     if (!profile) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseService } from '@/lib/supabaseClient';
 import { checkUserSubscription } from '@/utils/supabaseClient';
 import { processWithMindee } from '@/app/api/upload-receipt/route';
+import { generatePdfWithPuppeteer } from '@/lib/pdf-generator';
 
 interface WhatsAppMessage {
   From: string;
@@ -43,6 +44,54 @@ interface WhatsAppBusinessWebhook {
 // Función para limpiar número de teléfono
 function cleanPhoneNumber(phone: string): string {
   return phone.replace('whatsapp:', '').replace('+', '');
+}
+
+// Función para obtener perfil del usuario
+async function getUserProfile(phoneNumber: string) {
+  const supabase = getSupabaseService();
+  
+  // Intentar diferentes formatos del número
+  const phoneFormats = [
+    phoneNumber, // Formato original
+    phoneNumber.replace('whatsapp:', ''), // Quitar prefijo whatsapp:
+    phoneNumber.replace('whatsapp:', '').replace('+', ''), // Quitar whatsapp: y +
+    phoneNumber.replace('+', ''), // Solo quitar +
+    phoneNumber.replace(/^34/, ''), // Quitar 34 del principio (ESTE ES EL IMPORTANTE)
+    phoneNumber.replace(/^(\+34|34)/, ''), // Quitar +34 o 34 del principio
+    `+34${phoneNumber}`, // Añadir +34
+    phoneNumber.replace('+34', ''), // Quitar +34
+    `+${phoneNumber}`, // Añadir +
+    phoneNumber.replace('+', ''), // Quitar +
+    phoneNumber.replace(/\D/g, '') // Solo números
+  ];
+
+  console.log('🔍 getUserProfile - Buscando con número:', phoneNumber);
+  console.log('📱 getUserProfile - Formatos a probar:', phoneFormats);
+
+  let profile = null;
+  let foundWithFormat = '';
+
+  // Buscar el usuario con diferentes formatos
+  for (const phoneFormat of phoneFormats) {
+    console.log(`🔎 getUserProfile - Probando formato: "${phoneFormat}"`);
+    
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, empresa_id, telefono')
+      .eq('telefono', phoneFormat)
+      .single();
+
+    if (!error && data) {
+      profile = data;
+      foundWithFormat = phoneFormat;
+      console.log(`✅ getUserProfile - Usuario encontrado con formato: "${phoneFormat}"`);
+      break;
+    } else {
+      console.log(`❌ getUserProfile - No encontrado con formato: "${phoneFormat}"`);
+    }
+  }
+
+  return profile;
 }
 
 // Función para obtener integraciones del usuario
@@ -149,7 +198,7 @@ async function getUserIntegrations(phoneNumber: string) {
 function generateIntegrationsMenu(integrations: any[], phoneNumber: string) {
   if (integrations.length === 0) {
     return {
-      message: `❌ *No tienes integraciones configuradas*\n\nVe a tu dashboard para configurar Odoo, Holded o Xero.`,
+      message: `❌ *No tienes integraciones configuradas*\n\nVe a tu dashboard para configurar Odoo, Holded o Xero.\n\n📄 *Comando útil:*\n• Escribe "*pdf*" para descargar tu factura en PDF`,
       hasIntegrations: false
     };
   }
@@ -162,6 +211,7 @@ function generateIntegrationsMenu(integrations: any[], phoneNumber: string) {
   });
 
   message += `\n💬 *Responde con el número de tu elección*`;
+  message += `\n\n📄 *Comando útil:*\n• Escribe "*pdf*" para descargar tu factura en PDF`;
 
   return {
     message,
@@ -340,6 +390,41 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
     
     console.log('✅ Recibo guardado exitosamente con ID:', receipt.id);
     
+    // Generar PDF del recibo
+    console.log('🔄 Generando PDF del recibo...');
+    try {
+      const pdfResult = await generatePdfWithPuppeteer(mindeeResult.data, profile.id);
+      
+      if (pdfResult.success) {
+        console.log('✅ PDF generado exitosamente:', pdfResult.data.download_url);
+        
+        // Actualizar metadatos del recibo con información del PDF
+        const updatedMetadatos = {
+          ...receipt.metadatos,
+          pdf_generation: {
+            download_url: pdfResult.data.download_url,
+            pdf_url: pdfResult.data.pdf_url || pdfResult.data.download_url,
+            generated_at: pdfResult.data.generated_at,
+            status: "success"
+          }
+        };
+        
+        await supabase
+          .from('receipts')
+          .update({ 
+            metadatos: updatedMetadatos,
+            url_archivo: pdfResult.data.download_url 
+          })
+          .eq('id', receipt.id);
+          
+        console.log('✅ Metadatos del recibo actualizados con PDF');
+      } else {
+        console.log('❌ Error generando PDF:', pdfResult.error);
+      }
+    } catch (pdfError) {
+      console.log('❌ Error en generación de PDF:', pdfError);
+    }
+    
     return {
       success: true,
       receiptId: receipt.id,
@@ -370,6 +455,7 @@ async function handleTextCommand(phoneNumber: string, command: string) {
       const helpMessage = `🤖 *Comandos disponibles:*\n\n` +
         `📷 *Envía una imagen* - Procesar factura\n` +
         `📋 *menu* - Ver integraciones\n` +
+        `📄 *pdf* - Descargar PDF de tu última factura\n` +
         `❓ *ayuda* - Ver este mensaje\n` +
         `📊 *estado* - Ver tu plan actual`;
       await sendWhatsAppMessage(cleanPhone, helpMessage);
@@ -381,6 +467,49 @@ async function handleTextCommand(phoneNumber: string, command: string) {
         ? `✅ *Plan activo*\n\n📊 Facturas restantes: ${userStatus.remainingQuota}`
         : `❌ *Plan inactivo*\n\nVe a tu dashboard para activar tu suscripción.`;
       await sendWhatsAppMessage(cleanPhone, statusMessage);
+      break;
+    
+    case 'pdf':
+      // Obtener el último recibo del usuario y enviar el PDF
+      const pdfUser = await getUserProfile(cleanPhone);
+      if (!pdfUser) {
+        await sendWhatsAppMessage(cleanPhone, 
+          `❌ *Usuario no encontrado*\n\nNo se pudo encontrar tu perfil.`
+        );
+        break;
+      }
+      
+      const supabaseForPdf = getSupabaseService();
+      const { data: lastReceipt } = await supabaseForPdf
+        .from('receipts')
+        .select('id, proveedor, numero_factura, total, metadatos, url_archivo')
+        .eq('user_id', pdfUser.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (!lastReceipt) {
+        await sendWhatsAppMessage(cleanPhone, 
+          `❌ *No hay facturas*\n\nNo tienes facturas procesadas para descargar.`
+        );
+        break;
+      }
+      
+      // Verificar si existe el PDF
+      const pdfUrl = lastReceipt.metadatos?.pdf_generation?.download_url || lastReceipt.url_archivo;
+      
+      if (pdfUrl) {
+        const pdfMessage = `📄 *Tu factura PDF*\n\n` +
+          `📋 Proveedor: ${lastReceipt.proveedor}\n` +
+          `💰 Total: €${lastReceipt.total}\n` +
+          `📄 Factura: ${lastReceipt.numero_factura}\n\n` +
+          `🔗 Descarga tu PDF aquí: ${pdfUrl}`;
+        await sendWhatsAppMessage(cleanPhone, pdfMessage);
+      } else {
+        await sendWhatsAppMessage(cleanPhone, 
+          `❌ *PDF no disponible*\n\nNo se pudo generar el PDF para tu última factura.`
+        );
+      }
       break;
     
     default:
