@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseService } from '@/lib/supabaseClient';
 import { checkUserSubscription } from '@/utils/supabaseClient';
+import { processWithMindee } from '@/app/api/upload-receipt/route';
 
 interface WhatsAppMessage {
   From: string;
@@ -221,7 +222,16 @@ async function sendWhatsAppMessage(phoneNumber: string, message: string) {
 // Función para descargar archivo multimedia
 async function downloadMedia(mediaUrl: string): Promise<Buffer> {
   console.log('⬇️ Descargando archivo multimedia desde:', mediaUrl);
-  const response = await fetch(mediaUrl);
+  
+  // Usar autenticación básica para Twilio
+  const authString = Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString('base64');
+  
+  const response = await fetch(mediaUrl, {
+    headers: {
+      'Authorization': `Basic ${authString}`
+    }
+  });
+  
   console.log('📥 Respuesta de descarga:', response.status, response.statusText);
   
   if (!response.ok) {
@@ -336,46 +346,7 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
   }
 }
 
-// Función para procesar con Mindee (importada desde upload-receipt)
-async function processWithMindee(file: File): Promise<{
-  success: boolean;
-  data?: any;
-  error?: string;
-}> {
-  try {
-    const formData = new FormData();
-    formData.append('document', file);
-    
-    const response = await fetch('https://api.mindee.net/v1/products/mindee/invoices/v4/predict', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Token ${process.env.MINDEE_API_KEY || '1d6ac579ba024d9fb6c0ebcffdf2b5a0'}`
-      },
-      body: formData
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Mindee API error: ${response.statusText}`);
-    }
-    
-    const result = await response.json();
-    
-    if (!result.document || !result.document.inference || !result.document.inference.prediction) {
-      throw new Error('Respuesta inválida de Mindee API');
-    }
-    
-    return {
-      success: true,
-      data: result.document.inference.prediction
-    };
-    
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Error desconocido'
-    };
-  }
-}
+// Función processWithMindee importada desde upload-receipt
 
 // Función para manejar comandos de texto
 async function handleTextCommand(phoneNumber: string, command: string) {
