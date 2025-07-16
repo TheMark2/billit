@@ -20,12 +20,13 @@ import { useRouter } from "next/navigation";
 
 const DOC_TYPE_MAP: Record<string, { label: string; color: string }> = {
   invoice: { label: "Factura", color: "bg-emerald-500" },
-  payslip: { label: "Nómina", color: "bg-violet-500" },
+  ticket: { label: "Ticket", color: "bg-blue-500" },
+  receipt: { label: "Recibo", color: "bg-sky-500" },
   quote: { label: "Presupuesto", color: "bg-amber-500" },
   purchase_order: { label: "Pedido", color: "bg-orange-500" },
-  statement: { label: "Extracto", color: "bg-slate-500" },
-  receipt: { label: "Recibo", color: "bg-sky-500" },
   credit_note: { label: "Abono", color: "bg-rose-500" },
+  statement: { label: "Extracto", color: "bg-slate-500" },
+  payslip: { label: "Nómina", color: "bg-violet-500" },
   other_financial: { label: "Otro", color: "bg-neutral-500" },
 };
 
@@ -79,49 +80,45 @@ export function RecentReceipts() {
         return;
       }
 
-      // Obtener empresa_id del perfil
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("empresa_id")
-        .eq("id", uid)
-        .single();
-      
-      const empId = profile?.empresa_id;
-
-      // Obtener últimos 4 recibos
+      // Obtener últimos 4 tickets (sin empresa_id)
       const { data: receiptsRaw, error } = await supabase
         .from("receipts")
-        .select("id, proveedor, total, created_at, metadatos")
-        .or(`user_id.eq.${uid}${empId ? ",empresa_id.eq." + empId : ""}`)
+        .select("id, proveedor, total, created_at, metadatos, tipo_factura, notas")
+        .eq("user_id", uid)
         .order("created_at", { ascending: false })
         .limit(4);
 
       if (error) {
-        console.error("Error al cargar recibos:", error);
+        console.error("Error al cargar tickets:", error);
         setReceipts([]);
         return;
       }
 
       const mapped: Receipt[] = (receiptsRaw || []).map((r: any) => {
-        // Obtener el tipo de documento desde los datos de Mindee
-        const mindeeDocType = r.metadatos?.mindee_data?.document_type;
-        let rawType = "";
+        // Usar tipo_factura si está disponible, sino usar datos de Mindee
+        let documentType = r.tipo_factura;
         
-        if (mindeeDocType) {
-          // Mapear tipos de Mindee a nuestros tipos
-          const typeMapping: Record<string, string> = {
-            'INVOICE': 'invoice',
-            'RECEIPT': 'receipt',
-            'QUOTE': 'quote',
-            'PURCHASE_ORDER': 'purchase_order',
-            'CREDIT_NOTE': 'credit_note',
-            'STATEMENT': 'statement',
-            'PAYSLIP': 'payslip'
-          };
-          rawType = typeMapping[mindeeDocType.toUpperCase()] || mindeeDocType.toLowerCase();
+        if (!documentType) {
+          // Obtener el tipo de documento desde los datos de Mindee
+          const mindeeDocType = r.metadatos?.mindee_data?.document_type;
+          let rawType = "";
+          
+          if (mindeeDocType) {
+            // Mapear tipos de Mindee a nuestros tipos
+            const typeMapping: Record<string, string> = {
+              'INVOICE': 'invoice',
+              'RECEIPT': 'receipt',
+              'QUOTE': 'quote',
+              'PURCHASE_ORDER': 'purchase_order',
+              'CREDIT_NOTE': 'credit_note',
+              'STATEMENT': 'statement',
+              'PAYSLIP': 'payslip'
+            };
+            rawType = typeMapping[mindeeDocType.toUpperCase()] || mindeeDocType.toLowerCase();
+          }
+          
+          documentType = rawType && rawType in DOC_TYPE_MAP ? rawType : "other_financial";
         }
-        
-        const validKey = rawType && rawType in DOC_TYPE_MAP ? rawType : "other_financial";
         
         return {
           id: r.id,
@@ -130,14 +127,14 @@ export function RecentReceipts() {
             month: "short"
           }),
           provider: r.proveedor || "Sin proveedor",
-          documentType: validKey,
+          documentType: documentType,
           total: parseFloat(r.total) || 0,
         };
       });
 
       setReceipts(mapped);
     } catch (error) {
-      console.error("Error al cargar recibos:", error);
+      console.error("Error al cargar tickets:", error);
       setReceipts([]);
     } finally {
       setLoading(false);
@@ -157,7 +154,7 @@ export function RecentReceipts() {
       <div className="p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold text-neutral-900">Últimos Recibos</h2>
+            <h2 className="text-lg font-semibold text-neutral-900">Últimos Tickets</h2>
           </div>
           
           <div className="flex items-center gap-2">

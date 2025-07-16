@@ -10,20 +10,43 @@ interface Notification {
   id: string;
   title: string;
   message: string;
-  type: 'success' | 'error' | 'info' | 'warning';
-  timestamp: Date;
-  read: boolean;
-  receiptId?: string;
+  type: 'success' | 'error' | 'info' | 'warning' | 'payment' | 'subscription' | 'integration' | 'limit' | 'welcome';
+  created_at: string;
+  is_read: boolean;
+  action_url?: string;
+  receipt_id?: string;
+  metadata?: any;
 }
 
 interface NotificationsProps {
   onToggle?: (isOpen: boolean) => void;
 }
 
+// Skeleton para las notificaciones
+const NotificationsSkeleton = () => (
+  <div className="space-y-3">
+    {Array.from({ length: 3 }, (_, i) => (
+      <div key={i} className="p-4 animate-pulse">
+        <div className="flex items-start gap-3">
+          <div className="w-2 h-2 bg-neutral-200 rounded-full mt-1.5" />
+          <div className="flex-1 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="h-4 bg-neutral-200 rounded w-32" />
+              <div className="h-3 bg-neutral-100 rounded w-12" />
+            </div>
+            <div className="h-3 bg-neutral-100 rounded w-48" />
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
 export function Notifications({ onToggle }: NotificationsProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [hasUnread, setHasUnread] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchNotifications();
@@ -33,46 +56,69 @@ export function Notifications({ onToggle }: NotificationsProps) {
     const { data: { session } } = await supabase.auth.getSession();
     const uid = session?.user?.id;
     
-    if (!uid) return;
+    if (!uid) {
+      setLoading(false);
+      return;
+    }
 
-    // Obtener recibos recientes para generar notificaciones
-    const { data: receipts } = await supabase
-      .from("receipts")
-      .select("id, proveedor, created_at, estado, metadatos")
-      .eq("user_id", uid)
-      .order("created_at", { ascending: false })
-      .limit(10);
+    try {
+      // Obtener notificaciones reales de la base de datos
+      const { data: notifications, error } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", uid)
+        .order("created_at", { ascending: false })
+        .limit(20);
 
-    if (receipts) {
-      const generatedNotifications: Notification[] = receipts.map((receipt, index) => {
-        const isSuccess = receipt.estado === 'synced';
-        const timestamp = new Date(receipt.created_at);
-        
-        return {
-          id: `receipt-${receipt.id}`,
-          title: isSuccess ? "Recibo procesado" : "Recibo procesado parcialmente",
-          message: `${receipt.proveedor} - ${timestamp.toLocaleDateString()}`,
-          type: isSuccess ? 'success' : 'warning',
-          timestamp,
-          read: index > 2, // Marcar como no leídas las primeras 3
-          receiptId: receipt.id
-        };
-      });
+      if (error) {
+        console.error('Error fetching notifications:', error);
+        return;
+      }
 
-      setNotifications(generatedNotifications);
-      setHasUnread(generatedNotifications.some(n => !n.read));
+      if (notifications) {
+        setNotifications(notifications);
+        setHasUnread(notifications.some(n => !n.is_read));
+      }
+    } catch (error) {
+      console.error('Error fetching notifications:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const markAsRead = (id: string) => {
+  const markAsRead = async (id: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const uid = session?.user?.id;
+    
+    if (!uid) return;
+
+    // Actualizar en la base de datos
+    await supabase.rpc('mark_notifications_as_read', {
+      p_user_id: uid,
+      p_notification_ids: [id]
+    });
+
+    // Actualizar estado local
     setNotifications(prev => 
-      prev.map(n => n.id === id ? { ...n, read: true } : n)
+      prev.map(n => n.id === id ? { ...n, is_read: true } : n)
     );
-    setHasUnread(notifications.some(n => !n.read && n.id !== id));
+    setHasUnread(notifications.some(n => !n.is_read && n.id !== id));
   };
 
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  const markAllAsRead = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const uid = session?.user?.id;
+    
+    if (!uid) return;
+
+    // Actualizar en la base de datos
+    await supabase.rpc('mark_notifications_as_read', {
+      p_user_id: uid,
+      p_notification_ids: null
+    });
+
+    // Actualizar estado local
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     setHasUnread(false);
   };
 
@@ -81,6 +127,11 @@ export function Notifications({ onToggle }: NotificationsProps) {
       case 'success': return <div className="w-2 h-2 bg-green-500 rounded-full" />;
       case 'error': return <div className="w-2 h-2 bg-red-500 rounded-full" />;
       case 'warning': return <div className="w-2 h-2 bg-yellow-500 rounded-full" />;
+      case 'payment': return <div className="w-2 h-2 bg-orange-500 rounded-full" />;
+      case 'subscription': return <div className="w-2 h-2 bg-purple-500 rounded-full" />;
+      case 'integration': return <div className="w-2 h-2 bg-cyan-500 rounded-full" />;
+      case 'limit': return <div className="w-2 h-2 bg-red-400 rounded-full" />;
+      case 'welcome': return <div className="w-2 h-2 bg-emerald-500 rounded-full" />;
       default: return <div className="w-2 h-2 bg-blue-500 rounded-full" />;
     }
   };
@@ -144,7 +195,9 @@ export function Notifications({ onToggle }: NotificationsProps) {
         </div>
         
         <div className="max-h-96 overflow-y-auto">
-          {notifications.length === 0 ? (
+          {loading ? (
+            <NotificationsSkeleton />
+          ) : notifications.length === 0 ? (
             <div className="p-8 text-center">
               <IconBell className="w-12 h-12 text-neutral-300 mx-auto mb-4" />
               <p className="text-sm text-neutral-500">No hay notificaciones</p>
@@ -155,7 +208,7 @@ export function Notifications({ onToggle }: NotificationsProps) {
                 <div
                   key={notification.id}
                   className={`p-4 hover:bg-neutral-50 transition-colors cursor-pointer ${
-                    !notification.read ? 'bg-blue-50/50' : ''
+                    !notification.is_read ? 'bg-blue-50/50' : ''
                   }`}
                   onClick={() => markAsRead(notification.id)}
                 >
@@ -169,14 +222,14 @@ export function Notifications({ onToggle }: NotificationsProps) {
                           {notification.title}
                         </p>
                         <span className="text-xs text-neutral-500 whitespace-nowrap ml-2">
-                          {formatTimeAgo(notification.timestamp)}
+                          {formatTimeAgo(new Date(notification.created_at))}
                         </span>
                       </div>
                       <p className="text-sm text-neutral-600 mt-1 truncate">
                         {notification.message}
                       </p>
                     </div>
-                    {!notification.read && (
+                    {!notification.is_read && (
                       <div className="w-2 h-2 bg-blue-500 rounded-full mt-2" />
                     )}
                   </div>

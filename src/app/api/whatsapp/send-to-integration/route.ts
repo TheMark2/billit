@@ -17,7 +17,7 @@ async function sendToHolded(empresaId: string, receiptData: any) {
     const { data: credentials } = await supabase
       .from('holded_credentials')
       .select('*')
-      .eq('empresa_id', empresaId)
+      .eq('user_id', empresaId)
       .single();
     
     if (!credentials) {
@@ -60,7 +60,7 @@ async function sendToOdoo(empresaId: string, receiptData: any) {
     const { data: credentials } = await supabase
       .from('odoo_credentials')
       .select('*')
-      .eq('empresa_id', empresaId)
+      .eq('user_id', empresaId)
       .single();
     
     if (!credentials) {
@@ -101,7 +101,7 @@ async function sendToXero(empresaId: string, receiptData: any) {
     const { data: credentials } = await supabase
       .from('xero_credentials')
       .select('*')
-      .eq('empresa_id', empresaId)
+      .eq('user_id', empresaId)
       .single();
     
     if (!credentials) {
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
     for (const phoneFormat of phoneFormats) {
       const { data, error } = await supabase
         .from('profiles')
-        .select('empresa_id')
+        .select('id')
         .eq('telefono', phoneFormat)
         .single();
 
@@ -188,13 +188,13 @@ export async function POST(request: NextRequest) {
     // Enviar a la integración específica
     switch (integrationType) {
       case 'holded':
-        result = await sendToHolded(profile.empresa_id, receiptData);
+        result = await sendToHolded(profile.id, receiptData);
         break;
       case 'odoo':
-        result = await sendToOdoo(profile.empresa_id, receiptData);
+        result = await sendToOdoo(profile.id, receiptData);
         break;
       case 'xero':
-        result = await sendToXero(profile.empresa_id, receiptData);
+        result = await sendToXero(profile.id, receiptData);
         break;
       default:
         return NextResponse.json({ 

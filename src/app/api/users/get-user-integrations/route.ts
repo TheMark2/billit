@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     for (const phoneFormat of phoneFormats) {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, empresa_id, telefono')
+        .select('id, telefono')
         .eq('telefono', phoneFormat)
         .single();
 
@@ -111,7 +111,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       user_id: profile.id,
-      empresa_id: profile.empresa_id,
       phone: phone,
       found_with_format: foundWithFormat,
       integrations: integraciones,

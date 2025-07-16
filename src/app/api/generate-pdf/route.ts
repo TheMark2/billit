@@ -25,9 +25,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       pdf_url: pdfResult.data.download_url,
-      template_id: pdfResult.data.template_id,
-      transaction_ref: pdfResult.data.api_response.transaction_ref,
-      total_pages: pdfResult.data.api_response.total_pages,
+      template_id: pdfResult.data.template_id || 'custom-template',
+      transaction_ref: pdfResult.data.file_name || `tx-${Date.now()}`,
+      total_pages: 1, // Por defecto 1 página
       generated_at: pdfResult.data.generated_at,
       full_response: pdfResult.data
     });

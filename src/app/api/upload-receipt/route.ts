@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { decrypt } from '@/utils/encryption';
 import { generatePdfWithPuppeteer } from '@/lib/pdf-generator';
+import { uploadOriginalImage } from '@/lib/supabase-storage';
 
 const MINDEE_API_KEY = '1d6ac579ba024d9fb6c0ebcffdf2b5a0';
-const MINDEE_API_URL = 'https://api.mindee.net/v1/products/mindee/invoices/v4/predict';
+const MINDEE_API_URL = 'https://api.mindee.net/v1/products/mindee/expense_receipts/v5/predict';
 
 // Función para crear un evento SSE
 function createSSEEvent(data: any, event?: string): string {
@@ -17,17 +18,34 @@ async function processWithProgress(file: File, userId: string, controller: Reada
   const encoder = new TextEncoder();
   
   try {
-    // Paso 1: Iniciando procesamiento (10%)
+    // Generar ID temporal para el recibo
+    const tempReceiptId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Paso 1: Iniciando procesamiento (5%)
     controller.enqueue(encoder.encode(createSSEEvent({
-      progress: 10,
-      message: 'Iniciando procesamiento de la factura...',
+      progress: 5,
+      message: 'Iniciando procesamiento del ticket...',
       stage: 'init'
     })));
 
-    // Paso 2: Obtener credenciales y procesar con Mindee (30%)
+    // Paso 2: Guardando imagen original (15%)
     controller.enqueue(encoder.encode(createSSEEvent({
-      progress: 30,
-      message: 'Extrayendo datos de la factura con IA...',
+      progress: 15,
+      message: 'Guardando imagen original...',
+      stage: 'image_storage'
+    })));
+
+    const imageUploadResult = await uploadOriginalImage(file, userId, tempReceiptId, file.name);
+    
+    if (!imageUploadResult.success) {
+      console.warn('Warning: Could not save original image:', imageUploadResult.error);
+      // Continuar el procesamiento aunque falle el guardado de imagen
+    }
+
+    // Paso 3: Obtener credenciales y procesar con Mindee (35%)
+    controller.enqueue(encoder.encode(createSSEEvent({
+      progress: 35,
+      message: 'Extrayendo datos del ticket con IA...',
       stage: 'mindee'
     })));
 
@@ -39,23 +57,23 @@ async function processWithProgress(file: File, userId: string, controller: Reada
     if (!mindeeResult.success) {
       controller.enqueue(encoder.encode(createSSEEvent({
         progress: 0,
-        message: `Error procesando factura: ${mindeeResult.error}`,
+        message: `Error procesando ticket: ${mindeeResult.error}`,
         stage: 'error',
         error: mindeeResult.error
       })));
       return null;
     }
 
-    // Paso 3: Preparando integraciones (50%)
+    // Paso 4: Preparando integraciones (55%)
     controller.enqueue(encoder.encode(createSSEEvent({
-      progress: 50,
+      progress: 55,
       message: 'Preparando integraciones con tus sistemas...',
       stage: 'integrations_prep'
     })));
 
-    // Paso 4: Ejecutando integraciones (70%)
+    // Paso 5: Ejecutando integraciones (75%)
     controller.enqueue(encoder.encode(createSSEEvent({
-      progress: 70,
+      progress: 75,
       message: 'Sincronizando con tus sistemas de gestión...',
       stage: 'integrations_exec'
     })));
@@ -87,7 +105,7 @@ async function processWithProgress(file: File, userId: string, controller: Reada
 
     const integrationResults = await Promise.all(integrationPromises);
 
-    // Paso 5: Guardando en base de datos (90%)
+    // Paso 6: Guardando en base de datos (90%)
     controller.enqueue(encoder.encode(createSSEEvent({
       progress: 90,
       message: 'Guardando datos en la base de datos...',
@@ -113,18 +131,37 @@ async function processWithProgress(file: File, userId: string, controller: Reada
       }
     }
 
-    // Determinar estado
+    // Determinar estado con logs detallados
     let estadoFinal = 'pendiente';
     let integrationStatus = 'not_configured';
     
+    console.log('🔍 [STREAMING] Evaluando estado del ticket:');
+    console.log('📊 Credenciales:', { 
+      odoo: !!allCredentials.odoo, 
+      holded: !!allCredentials.holded 
+    });
+    console.log('📊 Resultados Odoo:', { 
+      executed: !!odooResult, 
+      success: odooResult?.success 
+    });
+    console.log('📊 Resultados Holded:', { 
+      executed: !!holdedResult, 
+      success: holdedResult?.success 
+    });
+    
     if ((allCredentials.odoo && odooResult?.success) || (allCredentials.holded && holdedResult?.success)) {
-      estadoFinal = 'synced';
+      estadoFinal = 'procesado';
       integrationStatus = 'success';
+      console.log('✅ [STREAMING] Estado final: PROCESADO (integración exitosa)');
     } else if ((allCredentials.odoo && !odooResult?.success) || (allCredentials.holded && !holdedResult?.success)) {
       estadoFinal = 'error';
       integrationStatus = 'failed';
+      console.log('❌ [STREAMING] Estado final: ERROR (integración falló)');
     } else if (allCredentials.odoo || allCredentials.holded) {
       integrationStatus = 'partial';
+      console.log('⚠️ [STREAMING] Estado final: PENDIENTE (sin integraciones configuradas/ejecutadas)');
+    } else {
+      console.log('📝 [STREAMING] Estado final: PENDIENTE (sin integraciones configuradas)');
     }
 
     return {
@@ -134,7 +171,8 @@ async function processWithProgress(file: File, userId: string, controller: Reada
       odooResult,
       holdedResult,
       estadoFinal,
-      integrationStatus
+      integrationStatus,
+      originalImagePath: imageUploadResult.success ? imageUploadResult.path : null
     };
 
   } catch (error) {
@@ -224,12 +262,14 @@ export async function POST(request: NextRequest) {
                 fecha_emision: result.mindeeResult.data.date || new Date().toISOString().split('T')[0],
                 fecha_subida: new Date().toISOString().split('T')[0],
                 proveedor: result.mindeeResult.data.supplier_name || 'Proveedor no identificado',
-                numero_factura: result.mindeeResult.data.invoice_number || `AUTO-${Date.now()}`,
+                numero_factura: result.mindeeResult.data.invoice_number || null,
                 total: result.mindeeResult.data.total_amount || 0,
                 moneda: result.mindeeResult.data.currency || 'EUR',
                 estado: result.estadoFinal,
                 url_archivo: file.name,
                 texto_extraido: JSON.stringify(result.mindeeResult.data),
+                tipo_factura: 'ticket', // Always use 'ticket' for digitized receipts
+                original_image_path: result.originalImagePath,
                 metadatos: {
                   mindee_data: result.mindeeResult.data,
                   pdf_generation: result.pdfResult.success ? (result.pdfResult as any).data : { error: (result.pdfResult as any).error || 'PDF generation failed' },
@@ -249,17 +289,23 @@ export async function POST(request: NextRequest) {
               .single();
 
             if (dbError) {
+              console.error('Database error details (streaming):', {
+                message: dbError.message,
+                details: dbError.details,
+                hint: dbError.hint,
+                code: dbError.code
+              });
               controller.enqueue(encoder.encode(createSSEEvent({
                 progress: 0,
                 message: 'Error guardando en base de datos',
                 stage: 'error',
-                error: dbError.message
+                error: `${dbError.message} (Code: ${dbError.code})`
               })));
             } else {
               // Completado (100%)
               controller.enqueue(encoder.encode(createSSEEvent({
                 progress: 100,
-                message: 'Factura procesada correctamente',
+                message: 'Ticket procesado correctamente',
                 stage: 'completed',
                 data: {
                   receipt_id: receiptData.id,
@@ -300,6 +346,17 @@ export async function POST(request: NextRequest) {
     // Procesamiento normal sin streaming (para compatibilidad)
     console.log('Upload: Processing file:', file.name, 'Size:', file.size);
 
+    // Generar ID temporal para el recibo
+    const tempReceiptId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Guardar imagen original en Supabase Storage
+    const imageUploadResult = await uploadOriginalImage(file, user.id, tempReceiptId, file.name);
+    
+    if (!imageUploadResult.success) {
+      console.warn('Warning: Could not save original image:', imageUploadResult.error);
+      // Continuar el procesamiento aunque falle el guardado de imagen
+    }
+
     const [mindeeResult, allCredentials] = await Promise.all([
       processWithMindee(file),
       getAllCredentials(user.id)
@@ -308,7 +365,7 @@ export async function POST(request: NextRequest) {
     if (!mindeeResult.success) {
       console.error('Mindee processing failed:', mindeeResult.error);
       return NextResponse.json(
-        { error: `Error procesando factura: ${mindeeResult.error}` },
+        { error: `Error procesando ticket: ${mindeeResult.error}` },
         { status: 400 }
       );
     }
@@ -363,18 +420,39 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Determinar estado
+    // Determinar estado con logs detallados
     let estadoFinal = 'pendiente';
     let integrationStatus = 'not_configured';
     
+    console.log('🔍 [NO-STREAMING] Evaluando estado del ticket:');
+    console.log('📊 Credenciales:', { 
+      odoo: !!allCredentials.odoo, 
+      holded: !!allCredentials.holded 
+    });
+    console.log('📊 Resultados Odoo:', { 
+      executed: !!odooResult, 
+      success: odooResult?.success,
+      details: odooResult 
+    });
+    console.log('📊 Resultados Holded:', { 
+      executed: !!holdedResult, 
+      success: holdedResult?.success,
+      details: holdedResult 
+    });
+    
     if ((allCredentials.odoo && odooResult?.success) || (allCredentials.holded && holdedResult?.success)) {
-      estadoFinal = 'synced';
+      estadoFinal = 'procesado';
       integrationStatus = 'success';
+      console.log('✅ [NO-STREAMING] Estado final: PROCESADO (integración exitosa)');
     } else if ((allCredentials.odoo && !odooResult?.success) || (allCredentials.holded && !holdedResult?.success)) {
       estadoFinal = 'error';
       integrationStatus = 'failed';
+      console.log('❌ [NO-STREAMING] Estado final: ERROR (integración falló)');
     } else if (allCredentials.odoo || allCredentials.holded) {
       integrationStatus = 'partial';
+      console.log('⚠️ [NO-STREAMING] Estado final: PENDIENTE (sin integraciones configuradas/ejecutadas)');
+    } else {
+      console.log('📝 [NO-STREAMING] Estado final: PENDIENTE (sin integraciones configuradas)');
     }
 
     // Guardar en base de datos
@@ -385,12 +463,14 @@ export async function POST(request: NextRequest) {
         fecha_emision: mindeeResult.data.date || new Date().toISOString().split('T')[0],
         fecha_subida: new Date().toISOString().split('T')[0],
         proveedor: mindeeResult.data.supplier_name || 'Proveedor no identificado',
-        numero_factura: mindeeResult.data.invoice_number || `AUTO-${Date.now()}`,
+        numero_factura: mindeeResult.data.invoice_number || null,
         total: mindeeResult.data.total_amount || 0,
         moneda: mindeeResult.data.currency || 'EUR',
         estado: estadoFinal,
         url_archivo: file.name,
         texto_extraido: JSON.stringify(mindeeResult.data),
+        tipo_factura: 'ticket', // Always use 'ticket' for digitized receipts
+        original_image_path: imageUploadResult.success ? imageUploadResult.path : null,
         metadatos: {
           mindee_data: mindeeResult.data,
           pdf_generation: pdfResult.success ? (pdfResult as any).data : { error: (pdfResult as any).error || 'PDF generation failed' },
@@ -410,16 +490,106 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (dbError) {
-      console.error('Database error:', dbError);
+      console.error('Database error details:', {
+        message: dbError.message,
+        details: dbError.details,
+        hint: dbError.hint,
+        code: dbError.code
+      });
       return NextResponse.json(
-        { error: 'Error saving to database' },
+        { error: 'Error saving to database', details: dbError.message },
         { status: 500 }
       );
     }
 
+    // Detectar duplicados automáticamente
+    try {
+      console.log('🔍 Detectando duplicados automáticamente...');
+      const supabaseService = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      );
+
+      const { data: duplicates } = await supabaseService
+        .rpc('find_potential_duplicates', {
+          user_id_param: user.id,
+          proveedor_param: mindeeResult.data.supplier_name || 'Desconocido',
+          total_param: mindeeResult.data.total_amount || 0,
+          fecha_emision_param: mindeeResult.data.date || new Date().toISOString().split('T')[0],
+          threshold_days: 7,
+          threshold_amount: 5.0
+        });
+
+      const filteredDuplicates = duplicates?.filter((dup: any) => dup.receipt_id !== receiptData.id) || [];
+      
+      if (filteredDuplicates.length > 0) {
+        console.log(`⚠️ Se encontraron ${filteredDuplicates.length} posibles duplicados`);
+        
+        // Guardar detección en histórico
+        await supabaseService
+          .from('duplicate_detections')
+          .insert({
+            user_id: user.id,
+            receipt_id: receiptData.id,
+            potential_duplicates: filteredDuplicates.map((dup: any) => dup.receipt_id),
+            similarity_scores: filteredDuplicates.map((dup: any) => dup.similarity_score),
+            action_taken: 'pending'
+          });
+
+        // Crear notificación de duplicados encontrados
+        const { createAutoNotification } = await import('@/app/api/notifications/route');
+        await createAutoNotification(
+          user.id,
+          'warning',
+          '⚠️ Posibles duplicados detectados',
+          `Se encontraron ${filteredDuplicates.length} tickets similares. Revisa la tabla de recibos para verificar.`
+        );
+      }
+    } catch (error) {
+      console.warn('Error detecting duplicates:', error);
+    }
+
+    // Crear notificación de éxito
+    try {
+      const { createAutoNotification } = await import('@/app/api/notifications/route');
+      const supplierName = mindeeResult.data.supplier_name || 'Proveedor desconocido';
+      const total = mindeeResult.data.total_amount || 0;
+      
+      let notificationTitle = "✅ Ticket procesado";
+      let notificationMessage = `${supplierName} - €${total}`;
+      let notificationType = "success";
+      
+      // Verificar si hubo errores en integraciones
+      const hasIntegrationErrors = (odooResult && !odooResult.success) || (holdedResult && !holdedResult.success);
+      if (hasIntegrationErrors) {
+        notificationTitle = "⚠️ Ticket procesado parcialmente";
+        notificationMessage += " (algunas integraciones fallaron)";
+        notificationType = "warning";
+      }
+      
+      await createAutoNotification(
+        user.id,
+        notificationTitle,
+        notificationMessage,
+        notificationType,
+        `/dashboard/recibos`,
+        {
+          integrations: {
+            odoo: allCredentials.odoo ? (odooResult?.success ? 'success' : 'failed') : 'not_configured',
+            holded: allCredentials.holded ? (holdedResult?.success ? 'success' : 'failed') : 'not_configured',
+            pdf: pdfResult.success ? 'success' : 'failed'
+          }
+        },
+        receiptData.id
+      );
+    } catch (notificationError) {
+      console.error('Error creating notification:', notificationError);
+      // No fallar por error de notificación
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Factura procesada correctamente',
+      message: 'Ticket procesado correctamente',
       data: {
         receipt_id: receiptData.id,
         mindee_data: mindeeResult.data,
@@ -436,6 +606,41 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Upload error:', error);
+    
+    // Crear notificación de error si tenemos el usuario
+    try {
+      const errorAuthHeader = request.headers.get('authorization');
+      if (errorAuthHeader?.startsWith('Bearer ')) {
+        const errorToken = errorAuthHeader.substring(7);
+        const errorSupabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          {
+            global: {
+              headers: {
+                Authorization: `Bearer ${errorToken}`
+              }
+            }
+          }
+        );
+        
+        const { data: { user: errorUser } } = await errorSupabase.auth.getUser(errorToken);
+        if (errorUser) {
+          const { createAutoNotification } = await import('@/app/api/notifications/route');
+          await createAutoNotification(
+            errorUser.id,
+            "❌ Error procesando ticket",
+            "Hubo un problema al procesar tu ticket. Inténtalo de nuevo.",
+            "error",
+            `/dashboard/subir-facturas`,
+            { error: error instanceof Error ? error.message : 'Error desconocido' }
+          );
+        }
+      }
+    } catch (notificationError) {
+      console.error('Error creating error notification:', notificationError);
+    }
+    
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -443,23 +648,40 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Función para procesar factura con Mindee
+// Función para procesar ticket con Mindee
+// Función optimizada para procesar ticket con Mindee
 export async function processWithMindee(file: File): Promise<{
   success: boolean;
   data?: any;
   error?: string;
 }> {
   try {
+    console.log('🔄 Iniciando procesamiento optimizado con Mindee...');
+    
+    // Optimización 1: Comprimir archivo si es muy grande (>2MB)
+    let fileToSend = file;
+    if (file.size > 2 * 1024 * 1024) { // 2MB
+      console.log('📦 Archivo grande detectado, optimizando...');
+      fileToSend = await compressImageIfNeeded(file);
+    }
+
     const formData = new FormData();
-    formData.append('document', file);
+    formData.append('document', fileToSend);
+
+    // Optimización 2: Timeout más corto para evitar bloqueos
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos
 
     const response = await fetch(MINDEE_API_URL, {
       method: 'POST',
       headers: {
         'Authorization': `Token ${MINDEE_API_KEY}`,
       },
-      body: formData
+      body: formData,
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -471,6 +693,11 @@ export async function processWithMindee(file: File): Promise<{
     if (result.document && result.document.inference) {
       const prediction = result.document.inference.prediction;
       
+      // Optimización 3: Validar y limpiar número de factura
+      const extractedInvoiceNumber = prediction.invoice_number?.value;
+      const validInvoiceNumber = validateInvoiceNumber(extractedInvoiceNumber);
+      
+      // Optimización 4: Retornar solo datos esenciales
       return {
         success: true,
         data: {
@@ -481,7 +708,7 @@ export async function processWithMindee(file: File): Promise<{
           customer_company_registrations: prediction.customer_company_registrations || [],
           customer_address: prediction.customer_address?.value || null,
           document_type: prediction.document_type?.value || null,
-          invoice_number: prediction.invoice_number?.value || null,
+          invoice_number: validInvoiceNumber, // NO generar automáticamente
           reference_numbers: prediction.reference_numbers || [],
           date: prediction.date?.value || null,
           due_date: prediction.due_date?.value || null,
@@ -493,7 +720,12 @@ export async function processWithMindee(file: File): Promise<{
           taxes: prediction.taxes || [],
           line_items: prediction.line_items || [],
           payment_details: prediction.payment_details || [],
-          raw_mindee_response: result
+          // Almacenar solo metadatos esenciales de Mindee
+          mindee_metadata: {
+            confidence: result.document.inference.prediction.confidence || 0,
+            processing_time: result.document.inference.processing_time || 0,
+            document_id: result.document.id || null
+          }
         }
       };
     } else {
@@ -507,6 +739,87 @@ export async function processWithMindee(file: File): Promise<{
       error: error instanceof Error ? error.message : 'Unknown error'
     };
   }
+}
+
+// Función auxiliar para comprimir imagen si es necesario
+async function compressImageIfNeeded(file: File): Promise<File> {
+  if (!file.type.startsWith('image/')) {
+    return file; // No comprimir si no es imagen
+  }
+
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    
+    return new Promise((resolve) => {
+      img.onload = () => {
+        // Reducir tamaño si es muy grande
+        const maxWidth = 1200;
+        const maxHeight = 1200;
+        let { width, height } = img;
+        
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          } else {
+            width = (width * maxHeight) / height;
+            height = maxHeight;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+          } else {
+            resolve(file);
+          }
+        }, 'image/jpeg', 0.8);
+      };
+      
+      img.src = URL.createObjectURL(file);
+    });
+  } catch (error) {
+    console.error('Error comprimiendo imagen:', error);
+    return file;
+  }
+}
+
+// Función auxiliar para validar número de factura
+function validateInvoiceNumber(invoiceNumber: string | null | undefined): string | null {
+  if (!invoiceNumber) return null;
+  
+  // Limpiar el número de factura
+  const cleaned = invoiceNumber.trim();
+  
+  // Validar que no sea solo números aleatorios o patrones incorrectos
+  const invalidPatterns = [
+    /^AUTO-\d+$/,           // Números automáticos generados
+    /^\d{13,}$/,            // Números muy largos (probablemente timestamps)
+    /^[0-9]{1,3}$/,         // Números muy cortos (1-3 dígitos)
+    /^[^A-Za-z0-9\-\/]+$/   // Solo caracteres especiales
+  ];
+  
+  for (const pattern of invalidPatterns) {
+    if (pattern.test(cleaned)) {
+      console.log(`❌ Número de factura inválido detectado: ${cleaned}`);
+      return null;
+    }
+  }
+  
+  // Validar que tenga al menos 2 caracteres alfanuméricos
+  if (cleaned.length < 2 || !/[A-Za-z0-9]/.test(cleaned)) {
+    console.log(`❌ Número de factura muy corto o inválido: ${cleaned}`);
+    return null;
+  }
+  
+  console.log(`✅ Número de factura válido: ${cleaned}`);
+  return cleaned;
 }
 
 // Función para generar PDF con APITemplate.io - OBSOLETA - Reemplazada por generatePdfWithPuppeteer
@@ -535,23 +848,21 @@ export async function processWithMindee(file: File): Promise<{
           process.env.SUPABASE_SERVICE_ROLE_KEY!
         );
 
-        // Obtener información de la empresa del usuario
+        // Obtener información del perfil del usuario
         const { data: profile } = await supabase
           .from('profiles')
-          .select('empresa_id')
+          .select('nombre, apellido, email, telefono, nombre_fiscal, cif, direccion, email_facturacion')
           .eq('id', userId)
           .single();
 
-        if (profile?.empresa_id) {
-          const { data: empresa } = await supabase
-            .from('empresas')
-            .select('nombre_fiscal, cif, direccion, email_facturacion, telefono')
-            .eq('id', profile.empresa_id)
-            .single();
-
-          if (empresa) {
-            companyInfo = empresa;
-          }
+        if (profile) {
+          companyInfo = {
+            nombre_fiscal: profile.nombre_fiscal || `${profile.nombre} ${profile.apellido}`.trim(),
+            cif: profile.cif || '',
+            direccion: profile.direccion || '',
+            email_facturacion: profile.email_facturacion || profile.email || '',
+            telefono: profile.telefono || ''
+          };
         }
       } catch (error) {
         console.error('Error fetching company info:', error);

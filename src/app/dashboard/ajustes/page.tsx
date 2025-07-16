@@ -7,7 +7,6 @@ import { AlertCircle, UploadCloud } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { Toggle } from "@/components/ui/toggle";
 import { PlanInfo } from "@/components/dashboard/PlanInfo";
 import { SettingsSkeleton } from "@/components/dashboard/Skeletons";
 
@@ -38,7 +37,7 @@ export default function AjustesPage() {
         error: sessionError,
       } = await supabase.auth.getSession();
       if (sessionError) {
-        console.error(sessionError);
+        console.error("Error al obtener la sesión:", sessionError);
         return setLoading(false);
       }
       const user = session?.user;
@@ -51,7 +50,7 @@ export default function AjustesPage() {
         .single();
 
       if (error) {
-        console.error(error);
+        console.error("Error al cargar el perfil:", error);
       } else if (data) {
         setFirstName(data.nombre ?? "");
         setLastName(data.apellido ?? "");
@@ -267,34 +266,7 @@ export default function AjustesPage() {
           </div>
         </div>
 
-        {/* Separador */}
-        <Separator className="my-8" />
 
-        {/* Preferencias */}
-        <div className="grid grid-cols-[350px_1fr] gap-10 items-start">
-          <div className="space-y-1">
-            <h2 className="text-lg font-semibold">Preferencias de notificaciones</h2>
-            <p className="text-sm text-neutral-500">Configura tus preferencias de notificaciones</p>
-          </div>
-          <div className="flex flex-col gap-4 w-full">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <label className="text-sm font-medium">Notificaciones por correo</label>
-                  <p className="text-sm text-neutral-500">Recibe actualizaciones por correo electrónico</p>
-                </div>
-                <Toggle />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <label className="text-sm font-medium">Notificaciones por SMS</label>
-                  <p className="text-sm text-neutral-500">Recibe actualizaciones por mensaje de texto</p>
-                </div>
-                <Toggle />
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 py-t w-full">

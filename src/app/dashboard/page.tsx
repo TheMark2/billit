@@ -24,17 +24,19 @@ import { PlanStatusSkeleton } from "@/components/dashboard/Skeletons";
 import { MetricsSkeleton, ReceiptsSkeleton, CompanyInfoSkeleton } from "@/components/dashboard/Skeletons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RecentReceipts } from "@/components/dashboard/RecentReceipts";
+import { IntegrationsWidget } from "@/components/dashboard/IntegrationsWidget";
 import { useRouter } from 'next/navigation';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 const DOC_TYPE_MAP: Record<string, { label: string; color: string }> = {
   invoice: { label: "Factura", color: "bg-emerald-500" },
-  payslip: { label: "Nómina", color: "bg-violet-500" },
+  ticket: { label: "Ticket", color: "bg-blue-500" },
+  receipt: { label: "Recibo", color: "bg-sky-500" },
   quote: { label: "Presupuesto", color: "bg-amber-500" },
   purchase_order: { label: "Pedido", color: "bg-orange-500" },
-  statement: { label: "Extracto", color: "bg-slate-500" },
-  receipt: { label: "Recibo", color: "bg-sky-500" },
   credit_note: { label: "Abono", color: "bg-rose-500" },
+  statement: { label: "Extracto", color: "bg-slate-500" },
+  payslip: { label: "Nómina", color: "bg-violet-500" },
   other_financial: { label: "Otro", color: "bg-neutral-500" },
 };
 
@@ -81,26 +83,18 @@ export default function DashboardPage() {
   const [chartPeriod, setChartPeriod] = useState<'weekly' | 'monthly' | 'quarterly'>('weekly');
   const [buttonWidths, setButtonWidths] = useState<Record<string, number>>({});
   const [containerRef, setContainerRef] = useState<HTMLDivElement | null>(null);
-  const [companyInfo, setCompanyInfo] = useState<{
-    nombre: string;
-    cif: string;
-    direccion: string;
-    email: string;
-    telefono: string;
-    empresa_id: string;
-  } | null>(null);
+  // Removed company info since we're focusing on ticket digitization
 
   const [loadingMetrics, setLoadingMetrics] = useState(true);
   const [loadingChart, setLoadingChart] = useState(false);
-  const [loadingCompany, setLoadingCompany] = useState(true);
+  // Removed company loading state
   const [showCif, setShowCif] = useState(false);
 
   const [user, setUser] = useState<User | null>(null);
 
   const router = useRouter();
 
-  // Memoizar datos de empresa para evitar recálculos
-  const companyConnected = useMemo(() => !!companyInfo, [companyInfo]);
+  // Removed company connection check for ticket-focused workflow
 
   // Función para obtener estadísticas según el período seleccionado
   const fetchChartData = useCallback(async (period: 'weekly' | 'monthly' | 'quarterly') => {
@@ -139,19 +133,18 @@ export default function DashboardPage() {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - daysBack);
 
-    // Obtener empresa_id del perfil
+    // Obtener contador de tickets del perfil
     const { data: profile } = await supabase
       .from("profiles")
-      .select("empresa_id, recibos_mes_actual")
+      .select("recibos_mes_actual")
       .eq("id", uid)
       .single();
-    const empId = profile?.empresa_id;
 
-    // Obtener recibos existentes para el período
+    // Obtener tickets existentes para el período (solo del usuario)
     const { data: receipts } = await supabase
       .from("receipts")
       .select("created_at")
-      .or(`user_id.eq.${uid}${empId ? ",empresa_id.eq." + empId : ""}`)
+      .eq("user_id", uid)
       .gte("created_at", startDate.toISOString())
       .order("created_at", { ascending: true });
 
@@ -228,10 +221,9 @@ export default function DashboardPage() {
     setLoadingChart(false);
   }, []);
 
-  // Memoizar función de fetch de datos
+  // Simplified data fetch function for ticket-focused workflow
   const fetchData = useCallback(async () => {
     setLoadingMetrics(true);
-    setLoadingCompany(true);
 
     // 1. Obtener sesión y UID
     const {
@@ -241,24 +233,22 @@ export default function DashboardPage() {
 
     if (!uid) {
       setLoadingMetrics(false);
-      setLoadingCompany(false);
       return;
     }
 
-    // 2. Obtener empresa_id del perfil y recibos procesados
+    // 2. Obtener recibos procesados del perfil
     const { data: profile } = await supabase
       .from("profiles")
-      .select("empresa_id, recibos_mes_actual")
+      .select("recibos_mes_actual")
       .eq("id", uid)
       .single();
-    const empId = profile?.empresa_id as string | undefined;
     const recibosProcessed = profile?.recibos_mes_actual || 0;
 
-    // 3. Obtener el total de recibos actuales para métricas
+    // 3. Obtener el total de tickets actuales para métricas
     const { data: receiptsRaw, error: receiptsErr } = await supabase
       .from("receipts")
       .select("id")
-      .or(`user_id.eq.${uid}${empId ? ",empresa_id.eq." + empId : ""}`);
+      .eq("user_id", uid);
 
     if (receiptsErr) {
       // Error silencioso para producción
@@ -273,28 +263,6 @@ export default function DashboardPage() {
     // 4. Obtener datos del gráfico según el período seleccionado
     await fetchChartData(chartPeriod);
     setLoadingMetrics(false);
-
-    // 5. Información de la empresa (muy básica, puedes ampliar)
-    if (empId) {
-      const { data: empresa } = await supabase
-        .from("empresas")
-        .select("nombre_fiscal, cif, direccion, email_facturacion, telefono")
-        .eq("id", empId)
-        .single();
-
-      if (empresa) {
-        setCompanyInfo({
-          nombre: empresa.nombre_fiscal,
-          cif: empresa.cif,
-          direccion: empresa.direccion,
-          email: empresa.email_facturacion,
-          telefono: empresa.telefono,
-          empresa_id: empId,
-        });
-      }
-    }
-
-    setLoadingCompany(false);
   }, [fetchChartData, chartPeriod]);
 
   // Actualizar gráfico cuando cambie el período
@@ -374,7 +342,7 @@ export default function DashboardPage() {
                   ) : (
                     <div className="flex items-center gap-4">
                       <div className="flex flex-col">
-                        <span className="text-sm text-neutral-500">Recibos procesados</span>
+                        <span className="text-sm text-neutral-500">Tickets procesados</span>
                         <span className="text-2xl font-semibold text-neutral-800">
                           {metrics.totalProcessed.toLocaleString()}
                         </span>
@@ -389,7 +357,7 @@ export default function DashboardPage() {
                           {hoveredData ? (hoveredData.isToday ? 'Hoy' : hoveredData.date) : 'Resumen del período'}
                         </span>
                         <span className="text-sm font-medium text-neutral-600">
-                          {hoveredData ? `${hoveredData.count} recibos` : `${metrics.totalProcessed} procesados`}
+                          {hoveredData ? `${hoveredData.count} tickets` : `${metrics.totalProcessed} procesados`}
                         </span>
                       </div>
                     </div>
@@ -599,100 +567,18 @@ export default function DashboardPage() {
             </>
           </Card>
 
-          {/* Componente de últimos recibos */}
+          {/* Componente de últimos tickets */}
           <RecentReceipts />
         </div>
 
-        {/* Segunda columna - Información de la empresa y plan */}
+        {/* Segunda columna - Plan */}
         <div className="space-y-6">
           {/* Plan status */}
           <Suspense fallback={<PlanStatusSkeleton />}>
             <PlanStatus />
           </Suspense>
-
-          {/* Información de la empresa */}
-          <Card className="p-6 rounded-2xl border-0 bg-white shadow-none border">
-            {loadingCompany ? (
-              <CompanyInfoSkeleton />
-            ) : (
-              <>
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-neutral-900">Información de la empresa</h2>
-                  <Button 
-                    onClick={() => router.push('/dashboard/empresa')}
-                    variant="outline"
-                    size="sm"
-                    className="text-xs"
-                  >
-                    <IconEdit className="w-3 h-3 mr-1" />
-                    Editar
-                  </Button>
-                </div>
-                
-                {companyConnected ? (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 gap-3">
-                      <div className="flex items-center gap-2 text-sm">
-                        <IconBuildingCog className="w-4 h-4 text-neutral-500" />
-                        <span className="text-neutral-700">{companyInfo!.nombre}</span>
-                      </div>
-                      
-                      <div className="flex items-center gap-2 text-sm">
-                        <IconUserPlus className="w-4 h-4 text-neutral-500" />
-                        <span className="text-neutral-700">
-                          {showCif ? companyInfo!.cif : '••••••••'}
-                        </span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setShowCif(!showCif)}
-                          className="h-5 w-5 p-0 border-0 bg-transparent hover:bg-neutral-100"
-                        >
-                          {showCif ? <IconEyeOff className="w-3 h-3" /> : <IconEye className="w-3 h-3" />}
-                        </Button>
-                      </div>
-                      
-                      {companyInfo!.email && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <IconMail className="w-4 h-4 text-neutral-500" />
-                          <span className="text-neutral-700">{companyInfo!.email}</span>
-                        </div>
-                      )}
-                      
-                      {companyInfo!.telefono && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <IconPhone className="w-4 h-4 text-neutral-500" />
-                          <span className="text-neutral-700">{companyInfo!.telefono}</span>
-                        </div>
-                      )}
-                      
-                      {companyInfo!.direccion && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <IconLocationPin className="w-4 h-4 text-neutral-500" />
-                          <span className="text-neutral-700">{companyInfo!.direccion}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <IconBuildingCog className="w-12 h-12 text-neutral-400 mx-auto mb-4" />
-                    <p className="text-sm text-neutral-500 mb-4">
-                      No hay información de empresa configurada
-                    </p>
-                    <Button 
-                      onClick={() => router.push('/dashboard/empresa')}
-                      variant="outline"
-                      size="sm"
-                    >
-                      <IconUserPlus className="w-4 h-4 mr-2" />
-                      Configurar empresa
-                    </Button>
-                  </div>
-                )}
-              </>
-            )}
-          </Card>
+          {/* Widget de integraciones */}
+          <IntegrationsWidget />
         </div>
       </div>
     </div>

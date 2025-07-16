@@ -7,8 +7,8 @@ import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-// Puedes crear estos iconos como placeholders en '@/components/ui/Icons'
-import { AppleIcon, GoogleIcon, FacebookIcon } from '@/components/ui/Icons';
+// Solo importar Google y Apple
+import { AppleIcon, GoogleIcon } from '@/components/ui/Icons';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -38,7 +38,7 @@ export default function LoginPage() {
     setError(null);
   };
 
-  const handleOAuth = async (provider: 'google' | 'github' | 'facebook' | 'apple') => {
+  const handleOAuth = async (provider: 'google' | 'github' | 'apple') => {
     setLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({ provider });
     if (error) {
@@ -184,7 +184,7 @@ export default function LoginPage() {
       {/* Banner */}
       <div className="relative w-full h-56 md:h-auto md:w-1/2 order-1 md:order-none">
         <Image
-          src="/login/banneronboarding2.webp"
+          src="/Landingimg.png"
           alt="banner"
           fill
           sizes="(max-width: 768px) 100vw, 50vw"
@@ -283,10 +283,10 @@ export default function LoginPage() {
               type="button"
               variant="outline"
               className="w-full gap-2"
-              onClick={() => handleOAuth('facebook')}
+              onClick={() => handleOAuth('apple')}
               disabled={loading}
             >
-              <FacebookIcon className="w-4 h-4" /> Facebook
+              <AppleIcon className="w-4 h-4" /> Apple
             </Button>
           </div>
 

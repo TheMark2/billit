@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseService } from '@/lib/supabaseClient';
 import { checkUserSubscription } from '@/utils/supabaseClient';
 import { processWithMindee } from '@/app/api/upload-receipt/route';
+import { uploadOriginalImage } from '@/lib/supabase-storage';
 
 interface WhatsAppMessage {
   From: string;
@@ -76,7 +77,7 @@ async function getUserProfile(phoneNumber: string) {
     
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, empresa_id, telefono')
+      .select('id, telefono')
       .eq('telefono', phoneFormat)
       .single();
 
@@ -124,7 +125,7 @@ async function getUserIntegrations(phoneNumber: string) {
     
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, empresa_id, telefono')
+      .select('id, telefono')
       .eq('telefono', phoneFormat)
       .single();
 
@@ -149,7 +150,7 @@ async function getUserIntegrations(phoneNumber: string) {
   const { data: holded } = await supabase
     .from('holded_credentials')
     .select('*')
-    .eq('empresa_id', profile.empresa_id)
+    .eq('user_id', profile.id)
     .single();
   
   if (holded) {
@@ -164,7 +165,7 @@ async function getUserIntegrations(phoneNumber: string) {
   const { data: odoo } = await supabase
     .from('odoo_credentials')
     .select('*')
-    .eq('empresa_id', profile.empresa_id)
+    .eq('user_id', profile.id)
     .single();
   
   if (odoo) {
@@ -179,7 +180,7 @@ async function getUserIntegrations(phoneNumber: string) {
   const { data: xero } = await supabase
     .from('xero_credentials')
     .select('*')
-    .eq('empresa_id', profile.empresa_id)
+    .eq('user_id', profile.id)
     .single();
   
   if (xero) {
@@ -298,43 +299,34 @@ async function downloadMedia(mediaUrl: string): Promise<Buffer> {
 // Función para procesar recibo (simplificada, reutiliza lógica de upload-receipt)
 async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaType: string) {
   try {
+    // Generar ID temporal para el recibo
+    const tempReceiptId = `whatsapp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
     // Crear un File object desde el buffer
     const file = new File([mediaBuffer], 'receipt.jpg', { type: mediaType });
     
-    // Llamar directamente a la función de procesamiento de Mindee
-    console.log('🧠 Llamando a Mindee API...');
-    const mindeeResult = await processWithMindee(file);
-    console.log('📊 Resultado de Mindee:', mindeeResult);
-    
-    if (!mindeeResult.success) {
-      console.log('❌ Error de Mindee:', mindeeResult.error);
-      throw new Error(mindeeResult.error || 'Error procesando factura');
-    }
-    
-    console.log('✅ Mindee procesó exitosamente');
-    
-    // Obtener el usuario por número de teléfono
+    // Obtener el usuario por número de teléfono primero para tener el userId
     const supabase = getSupabaseService();
     
-      // Intentar diferentes formatos del número
-  const phoneFormats = [
-    phoneNumber, // Formato original
-    phoneNumber.replace('whatsapp:', ''), // Quitar prefijo whatsapp:
-    phoneNumber.replace('whatsapp:', '').replace('+', ''), // Quitar whatsapp: y +
-    phoneNumber.replace('+', ''), // Solo quitar +
-    phoneNumber.replace(/^34/, ''), // Quitar 34 del principio (ESTE ES EL IMPORTANTE)
-    phoneNumber.replace(/^(\+34|34)/, ''), // Quitar +34 o 34 del principio
-    `+34${phoneNumber}`, // Añadir +34
-    phoneNumber.replace('+34', ''), // Quitar +34
-    `+${phoneNumber}`, // Añadir +
-    phoneNumber.replace('+', ''), // Quitar +
-    phoneNumber.replace(/\D/g, '') // Solo números
-  ];
+    // Intentar diferentes formatos del número
+    const phoneFormats = [
+      phoneNumber, // Formato original
+      phoneNumber.replace('whatsapp:', ''), // Quitar prefijo whatsapp:
+      phoneNumber.replace('whatsapp:', '').replace('+', ''), // Quitar whatsapp: y +
+      phoneNumber.replace('+', ''), // Solo quitar +
+      phoneNumber.replace(/^34/, ''), // Quitar 34 del principio (ESTE ES EL IMPORTANTE)
+      phoneNumber.replace(/^(\+34|34)/, ''), // Quitar +34 o 34 del principio
+      `+34${phoneNumber}`, // Añadir +34
+      phoneNumber.replace('+34', ''), // Quitar +34
+      `+${phoneNumber}`, // Añadir +
+      phoneNumber.replace('+', ''), // Quitar +
+      phoneNumber.replace(/\D/g, '') // Solo números
+    ];
 
     console.log('🔍 processReceipt - Buscando con número:', phoneNumber);
     console.log('📱 processReceipt - Formatos a probar:', phoneFormats);
 
-    let profile = null;
+    let profile: any = null;
     let foundWithFormat = '';
 
     // Buscar el usuario con diferentes formatos
@@ -343,7 +335,7 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
       
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, empresa_id, telefono')
+        .select('id, telefono')
         .eq('telefono', phoneFormat)
         .single();
 
@@ -361,28 +353,149 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
       console.log('❌ processReceipt - Usuario no encontrado');
       throw new Error('Usuario no encontrado');
     }
+
+    // Guardar imagen original en Supabase Storage
+    console.log('📸 Guardando imagen original en Supabase Storage...');
+    const imageUploadResult = await uploadOriginalImage(mediaBuffer, profile.id, tempReceiptId, 'receipt.jpg');
     
-    // Guardar el recibo en la base de datos (similar a upload-receipt)
+    if (!imageUploadResult.success) {
+      console.warn('⚠️ Warning: Could not save original image:', imageUploadResult.error);
+      // Continuar el procesamiento aunque falle el guardado de imagen
+    }
+    
+    // Llamar directamente a la función de procesamiento de Mindee
+    console.log('🧠 Llamando a Mindee API...');
+    const mindeeResult = await processWithMindee(file);
+    console.log('📊 Resultado de Mindee:', mindeeResult);
+    
+    if (!mindeeResult.success) {
+      console.log('❌ Error de Mindee:', mindeeResult.error);
+      throw new Error(mindeeResult.error || 'Error procesando factura');
+    }
+    
+    console.log('✅ Mindee procesó exitosamente');
+    
+    // Procesar integraciones antes de guardar (similar a upload-receipt)
+    console.log('🔗 Obteniendo credenciales y procesando integraciones...');
+    
+    // Importar funciones de integración
+    const { getAllCredentials, sendToOdoo, sendToHolded } = await import('@/app/api/upload-receipt/route');
+    const { generatePdfWithPuppeteer } = await import('@/lib/pdf-generator');
+    
+    const allCredentials = await getAllCredentials(profile.id);
+    
+    // Ejecutar integraciones en paralelo
+    const integrationPromises = [];
+    
+    integrationPromises.push(
+      generatePdfWithPuppeteer(mindeeResult.data, profile.id)
+        .then((result: any) => ({ type: 'pdf', result }))
+        .catch((error: any) => ({ type: 'pdf', result: { success: false, error: error.message } }))
+    );
+
+    if (allCredentials.odoo) {
+      console.log('📋 Usuario tiene Odoo configurado, enviando a Odoo...');
+      integrationPromises.push(
+        sendToOdoo(mindeeResult.data, allCredentials.odoo)
+          .then(result => ({ type: 'odoo', result }))
+          .catch(error => ({ type: 'odoo', result: { success: false, error: error.message } }))
+      );
+    }
+
+    if (allCredentials.holded) {
+      console.log('💼 Usuario tiene Holded configurado, enviando a Holded...');
+      integrationPromises.push(
+        sendToHolded(mindeeResult.data, allCredentials.holded)
+          .then(result => ({ type: 'holded', result }))
+          .catch(error => ({ type: 'holded', result: { success: false, error: error.message } }))
+      );
+    }
+
+    const integrationResults = await Promise.all(integrationPromises);
+
+    // Procesar resultados
+    let pdfResult: { success: boolean; data?: any; error?: string } = { success: false, error: 'PDF generation not executed' };
+    let odooResult: any = null;
+    let holdedResult: any = null;
+
+    for (const integration of integrationResults) {
+      switch (integration.type) {
+        case 'pdf':
+          pdfResult = integration.result;
+          break;
+        case 'odoo':
+          odooResult = integration.result;
+          break;
+        case 'holded':
+          holdedResult = integration.result;
+          break;
+      }
+    }
+
+    // Determinar estado según integraciones
+    let estadoFinal = 'pendiente';
+    let integrationStatus = 'not_configured';
+    
+    console.log('🔍 [WHATSAPP] Evaluando estado del ticket:');
+    console.log('📊 Credenciales:', { 
+      odoo: !!allCredentials.odoo, 
+      holded: !!allCredentials.holded 
+    });
+    console.log('📊 Resultados Odoo:', { 
+      executed: !!odooResult, 
+      success: odooResult?.success 
+    });
+    console.log('📊 Resultados Holded:', { 
+      executed: !!holdedResult, 
+      success: holdedResult?.success 
+    });
+    
+    if ((allCredentials.odoo && odooResult?.success) || (allCredentials.holded && holdedResult?.success)) {
+      estadoFinal = 'procesado';
+      integrationStatus = 'success';
+      console.log('✅ [WHATSAPP] Estado final: PROCESADO (integración exitosa)');
+    } else if ((allCredentials.odoo && !odooResult?.success) || (allCredentials.holded && !holdedResult?.success)) {
+      estadoFinal = 'error';
+      integrationStatus = 'failed';
+      console.log('❌ [WHATSAPP] Estado final: ERROR (integración falló)');
+    } else if (allCredentials.odoo || allCredentials.holded) {
+      integrationStatus = 'partial';
+      console.log('⚠️ [WHATSAPP] Estado final: PENDIENTE (sin integraciones configuradas/ejecutadas)');
+    } else {
+      console.log('📝 [WHATSAPP] Estado final: PENDIENTE (sin integraciones configuradas)');
+    }
+
+    // Guardar el recibo en la base de datos con el estado correcto
     console.log('💾 Guardando recibo en base de datos...');
     const { data: receipt, error } = await supabase
       .from('receipts')
       .insert({
         user_id: profile.id,
-        empresa_id: profile.empresa_id,
         fecha_emision: mindeeResult.data.date || new Date().toISOString().split('T')[0],
         fecha_subida: new Date().toISOString().split('T')[0],
         proveedor: mindeeResult.data.supplier_name || 'Desconocido',
         numero_factura: mindeeResult.data.invoice_number || `AUTO-${Date.now()}`,
         total: mindeeResult.data.total_amount || 0,
         moneda: mindeeResult.data.currency || 'EUR',
-        estado: 'pendiente', // Pendiente hasta que se procese integración
+        estado: estadoFinal, // Estado determinado por integraciones
         url_archivo: 'whatsapp_receipt.jpg',
         texto_extraido: JSON.stringify(mindeeResult.data),
+        tipo_factura: 'ticket',
+        original_image_path: imageUploadResult.success ? imageUploadResult.path : null,
         metadatos: {
           mindee_data: mindeeResult.data,
+          pdf_generation: pdfResult.success ? pdfResult.data : { error: pdfResult.error || 'PDF generation failed' },
+          odoo_integration: odooResult,
+          holded_integration: holdedResult,
           file_size: mediaBuffer.length,
           processed_at: new Date().toISOString(),
-          source: 'whatsapp'
+          source: 'whatsapp',
+          integration_status: integrationStatus,
+          integrations_summary: {
+            odoo: allCredentials.odoo ? (odooResult?.success ? 'success' : 'failed') : 'not_configured',
+            holded: allCredentials.holded ? (holdedResult?.success ? 'success' : 'failed') : 'not_configured',
+            pdf: pdfResult.success ? 'success' : 'failed'
+          }
         }
       })
       .select()
@@ -394,6 +507,42 @@ async function processReceipt(phoneNumber: string, mediaBuffer: Buffer, mediaTyp
     }
     
     console.log('✅ Recibo guardado exitosamente con ID:', receipt.id);
+
+    // Detectar duplicados automáticamente
+    try {
+      console.log('🔍 Detectando duplicados automáticamente...');
+      
+      const { data: duplicates } = await supabase
+        .rpc('find_potential_duplicates', {
+          user_id_param: profile.id,
+          proveedor_param: mindeeResult.data.supplier_name || 'Desconocido',
+          total_param: mindeeResult.data.total_amount || 0,
+          fecha_emision_param: mindeeResult.data.date || new Date().toISOString().split('T')[0],
+          threshold_days: 7,
+          threshold_amount: 5.0
+        });
+
+      const filteredDuplicates = duplicates?.filter((dup: any) => dup.receipt_id !== receipt.id) || [];
+      
+      if (filteredDuplicates.length > 0) {
+        console.log(`⚠️ Se encontraron ${filteredDuplicates.length} posibles duplicados`);
+        
+        // Guardar detección en histórico
+        await supabase
+          .from('duplicate_detections')
+          .insert({
+            user_id: profile.id,
+            receipt_id: receipt.id,
+            potential_duplicates: filteredDuplicates.map((dup: any) => dup.receipt_id),
+            similarity_scores: filteredDuplicates.map((dup: any) => dup.similarity_score),
+            action_taken: 'pending'
+          });
+
+        console.log('📝 Detección de duplicados guardada en histórico');
+      }
+    } catch (error) {
+      console.warn('⚠️ Error detecting duplicates:', error);
+    }
     
     // Nota: El PDF se generará on-demand cuando se necesite
     // para evitar problemas con Puppeteer en el webhook de Vercel

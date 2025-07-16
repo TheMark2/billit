@@ -19,6 +19,20 @@ interface PdfViewerProps {
   };
 }
 
+// Skeleton para el PDF
+const PdfSkeleton = () => (
+  <div className="space-y-4 animate-pulse">
+    <div className="h-6 bg-neutral-200 rounded w-48" />
+    <div className="h-4 bg-neutral-100 rounded w-64" />
+    <div className="w-full h-96 bg-neutral-100 rounded-lg flex items-center justify-center">
+      <div className="text-center space-y-3">
+        <div className="w-12 h-12 bg-neutral-200 rounded-full mx-auto" />
+        <div className="h-4 bg-neutral-200 rounded w-32 mx-auto" />
+      </div>
+    </div>
+  </div>
+);
+
 export default function PdfViewer({ receiptId, receiptInfo }: PdfViewerProps) {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -143,6 +157,11 @@ export default function PdfViewer({ receiptId, receiptInfo }: PdfViewerProps) {
             </Card>
           )}
 
+          {/* Mostrar skeleton mientras carga */}
+          {isLoading && !pdfData && (
+            <PdfSkeleton />
+          )}
+
           {pdfData && (
             <Card className="p-6">
               <div className="mb-4">
@@ -170,12 +189,14 @@ export default function PdfViewer({ receiptId, receiptInfo }: PdfViewerProps) {
                 </div>
                 <p className="text-sm text-gray-600 bg-neutral-100 p-2 rounded-lg w-fit flex items-center gap-2">
                     <IconFileInfo className="w-4 h-4" />
-                  Factura #{receiptInfo.numero_factura} - {receiptInfo.fecha_emision} - €{receiptInfo.total}
+                  {receiptInfo.proveedor} - {receiptInfo.fecha_emision}
                 </p>
               </div>
               
               <div>
-                {pdfUrl ? (
+                {isLoading ? (
+                  <PdfSkeleton />
+                ) : pdfUrl ? (
                   <div className="w-full h-120 border rounded-lg overflow-hidden">
                     <iframe
                       src={pdfUrl}

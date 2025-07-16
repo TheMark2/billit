@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/utils";
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trash2, X } from "lucide-react";
-import { IconEye, IconDownload, IconFileInvoice, IconReceipt2, IconQuote, IconShoppingCart, IconReport, IconNotes, IconReceiptRefund, IconFileDollar, IconRefresh } from "@tabler/icons-react";
+import { IconEye, IconDownload, IconFileInvoice, IconReceipt2, IconQuote, IconShoppingCart, IconReport, IconNotes, IconReceiptRefund, IconFileDollar, IconRefresh, IconPhoto } from "@tabler/icons-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
@@ -23,6 +23,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ReceiptsTableSkeleton } from "@/components/dashboard/Skeletons";
 import PdfViewer from "@/components/dashboard/PdfViewer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import EditReceiptDialog from "@/components/dashboard/EditReceiptDialog";
+import Select from "@/components/ui/select";
 
 interface Receipt {
   id: string;
@@ -33,6 +35,9 @@ interface Receipt {
   status?: string;
   numero_factura?: string;
   fecha_emision?: string;
+  moneda?: string;
+  tipo_factura?: string;
+  notas?: string;
   metadatos?: {
     integrations_summary?: {
       odoo?: 'success' | 'failed' | 'not_configured';
@@ -43,6 +48,12 @@ interface Receipt {
     odoo_integration?: any;
     holded_integration?: any;
     xero_integration?: any;
+    whatsapp_data?: {
+      file_info?: {
+        original_url?: string;
+      };
+    };
+    mindee_data?: any;
   };
 }
 
@@ -117,11 +128,17 @@ const DOC_TYPE_MAP: Record<string, { label: string; color: string; activeColor: 
     activeColor: "border-emerald-500",
     activeBg: "bg-emerald-50"
   },
-  payslip: { 
-    label: "Nómina", 
-    color: "bg-violet-500",
-    activeColor: "border-violet-500",
-    activeBg: "bg-violet-50"
+  ticket: { 
+    label: "Ticket", 
+    color: "bg-blue-500", 
+    activeColor: "border-blue-500",
+    activeBg: "bg-blue-50"
+  },
+  receipt: { 
+    label: "Recibo", 
+    color: "bg-sky-500",
+    activeColor: "border-sky-500",
+    activeBg: "bg-sky-50"
   },
   quote: { 
     label: "Presupuesto", 
@@ -135,23 +152,23 @@ const DOC_TYPE_MAP: Record<string, { label: string; color: string; activeColor: 
     activeColor: "border-orange-500",
     activeBg: "bg-orange-50"
   },
+  credit_note: { 
+    label: "Abono", 
+    color: "bg-rose-500",
+    activeColor: "border-rose-500",
+    activeBg: "bg-rose-50"
+  },
   statement: { 
     label: "Extracto", 
     color: "bg-slate-500",
     activeColor: "border-slate-500",
     activeBg: "bg-slate-50"
   },
-  receipt: { 
-    label: "Recibo", 
-    color: "bg-sky-500",
-    activeColor: "border-sky-500",
-    activeBg: "bg-sky-50"
-  },
-  credit_note: { 
-    label: "Abono", 
-    color: "bg-rose-500",
-    activeColor: "border-rose-500",
-    activeBg: "bg-rose-50"
+  payslip: { 
+    label: "Nómina", 
+    color: "bg-violet-500",
+    activeColor: "border-violet-500",
+    activeBg: "bg-violet-50"
   },
   other_financial: { 
     label: "Otro", 
@@ -159,6 +176,72 @@ const DOC_TYPE_MAP: Record<string, { label: string; color: string; activeColor: 
     activeColor: "border-neutral-500",
     activeBg: "bg-neutral-50"
   },
+};
+
+// Componente para ver imagen original
+const OriginalImageViewer = ({ receipt }: { receipt: Receipt }) => {
+  const [showImageModal, setShowImageModal] = useState(false);
+  
+  // Extraer URL de imagen original de los metadatos
+  const getOriginalImageUrl = () => {
+    if (receipt.metadatos?.whatsapp_data?.file_info?.original_url) {
+      return receipt.metadatos.whatsapp_data.file_info.original_url;
+    }
+    // Para archivos subidos por web, usar un endpoint para obtener la imagen
+    if (receipt.metadatos?.mindee_data && receipt.id) {
+      return `/api/receipt-image/${receipt.id}`;
+    }
+    return null;
+  };
+
+  const imageUrl = getOriginalImageUrl();
+
+  if (!imageUrl) {
+    return (
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 w-8 p-0 text-gray-400 cursor-not-allowed"
+        disabled
+      >
+        <IconPhoto className="h-4 w-4" />
+      </Button>
+    );
+  }
+
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 w-8 p-0 text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100"
+        onClick={() => setShowImageModal(true)}
+      >
+        <IconPhoto className="h-4 w-4" />
+      </Button>
+      
+      {showImageModal && (
+        <Dialog open={showImageModal} onOpenChange={setShowImageModal}>
+          <DialogContent className="max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>Imagen Original - {receipt.provider}</DialogTitle>
+            </DialogHeader>
+            <div className="flex justify-center">
+              <img 
+                src={imageUrl} 
+                alt="Imagen original del ticket"
+                className="max-w-full max-h-[70vh] object-contain rounded-lg"
+                onError={(e) => {
+                  console.error('Error loading image:', e);
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  );
 };
 
 // Eliminar los datos de ejemplo
@@ -179,6 +262,63 @@ const DOC_TYPE_MAP: Record<string, { label: string; color: string; activeColor: 
 //   { id: "14", date: "2024-01-02", provider: "Spotify", documentType: "invoice", total: 9.99 },
 //   { id: "15", date: "2024-01-01", provider: "Freelance Developer", documentType: "credit_note", total: 850.00 },
 // ];
+
+// Componente para cambiar tipo de documento rápidamente
+const QuickTypeChanger = ({ receipt, onTypeChanged }: { 
+  receipt: Receipt, 
+  onTypeChanged: () => void 
+}) => {
+  const [isChanging, setIsChanging] = useState(false);
+
+  const handleTypeChange = async (newType: string) => {
+    if (newType === receipt.documentType) return;
+
+    setIsChanging(true);
+    try {
+      const { error } = await supabase
+        .from('receipts')
+        .update({ tipo_factura: newType })
+        .eq('id', receipt.id);
+
+      if (error) throw error;
+      onTypeChanged();
+    } catch (error) {
+      console.error('Error updating document type:', error);
+    } finally {
+      setIsChanging(false);
+    }
+  };
+
+  const typeOptions = Object.entries(DOC_TYPE_MAP).map(([key, { label }]) => ({
+    value: key,
+    label
+  }));
+
+  return (
+    <Badge 
+      className={cn(
+        "flex items-center gap-2 pl-2 w-fit relative group cursor-pointer transition-all hover:scale-105",
+        isChanging && "opacity-50"
+      )} 
+      variant="neutral"
+    >
+      <div className={`w-2 h-2 rounded-full ${DOC_TYPE_MAP[receipt.documentType]?.color || DOC_TYPE_MAP.other_financial.color}`} />
+      {DOC_TYPE_MAP[receipt.documentType]?.label || DOC_TYPE_MAP.other_financial.label}
+      {isChanging && <div className="w-3 h-3 border border-neutral-400 border-t-transparent rounded-full animate-spin ml-1" />}
+      
+      {/* Select oculto que se activa con hover */}
+      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        <Select
+          options={typeOptions}
+          value={receipt.documentType}
+          onChange={handleTypeChange}
+          disabled={isChanging}
+          className="text-xs absolute inset-0 w-full h-full opacity-0"
+        />
+      </div>
+    </Badge>
+  );
+};
 
 export default function RecibosPage() {
   const [receipts, setReceipts] = useState<Receipt[]>([]); // Inicializar con array vacío
@@ -259,36 +399,12 @@ export default function RecibosPage() {
         return;
       }
 
-      // Primero obtener el perfil del usuario
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("empresa_id")
-        .eq("id", uid)
-        .single();
-
-      if (profileError) {
-        console.error("Error al obtener el perfil:", profileError);
-        // No mostrar error al usuario, solo loggear
-        setLoadingData(false);
-        return;
-      }
-
-      const empId = profile?.empresa_id;
-
-      // Construir la consulta de forma más robusta
+      // Construir la consulta simplificada para tickets
       let query = supabase
         .from("receipts")
-        .select("id, proveedor, total, created_at, estado, metadatos, numero_factura, fecha_emision")
+        .select("id, proveedor, total, created_at, estado, metadatos, numero_factura, fecha_emision, moneda, tipo_factura, notas")
+        .eq("user_id", uid)
         .order("created_at", { ascending: false });
-
-      // Filtrar por user_id del usuario autenticado
-      if (empId) {
-        // Si el usuario tiene empresa, buscar por user_id O empresa_id
-        query = query.or(`user_id.eq.${uid},empresa_id.eq.${empId}`);
-      } else {
-        // Si no tiene empresa, buscar solo por user_id
-        query = query.eq("user_id", uid);
-      }
 
       const { data, error } = await query;
 
@@ -297,47 +413,56 @@ export default function RecibosPage() {
         if (error.message.includes('RLS') || error.message.includes('permission')) {
           setError('Error de permisos. Intenta recargar la página.');
         }
-        setReceipts([]); // Limpiar recibos en caso de error
+        setReceipts([]); // Limpiar tickets en caso de error
         setLoadingData(false);
         return;
       }
 
       if (data && data.length > 0) {
         const mapped: Receipt[] = data.map((r: any) => {
-          // Obtener el tipo de documento desde los datos de Mindee
-          const mindeeDocType = r.metadatos?.mindee_data?.document_type;
-          let rawType = "";
+          // Usar tipo_factura si está disponible, sino usar datos de Mindee
+          let documentType = r.tipo_factura;
           
-          if (mindeeDocType) {
-            // Mapear tipos de Mindee a nuestros tipos
-            const typeMapping: Record<string, string> = {
-              'INVOICE': 'invoice',
-              'RECEIPT': 'receipt',
-              'QUOTE': 'quote',
-              'PURCHASE_ORDER': 'purchase_order',
-              'CREDIT_NOTE': 'credit_note',
-              'STATEMENT': 'statement',
-              'PAYSLIP': 'payslip'
-            };
-            rawType = typeMapping[mindeeDocType.toUpperCase()] || mindeeDocType.toLowerCase();
+          if (!documentType) {
+            // Obtener el tipo de documento desde los datos de Mindee
+            const mindeeDocType = r.metadatos?.mindee_data?.document_type;
+            let rawType = "";
+            
+            if (mindeeDocType) {
+              // Mapear tipos de Mindee a nuestros tipos
+              const typeMapping: Record<string, string> = {
+                'INVOICE': 'invoice',
+                'RECEIPT': 'receipt',
+                'QUOTE': 'quote',
+                'PURCHASE_ORDER': 'purchase_order',
+                'CREDIT_NOTE': 'credit_note',
+                'STATEMENT': 'statement',
+                'PAYSLIP': 'payslip'
+              };
+              rawType = typeMapping[mindeeDocType.toUpperCase()] || mindeeDocType.toLowerCase();
+            }
+            
+            documentType = rawType && rawType in DOC_TYPE_MAP ? rawType : "other_financial";
           }
           
-          const validKey = rawType && rawType in DOC_TYPE_MAP ? rawType : "other_financial";
           return {
             id: r.id,
             date: r.created_at,
             provider: r.proveedor || "-",
-            documentType: validKey,
+            documentType: documentType,
             total: parseFloat(r.total),
             status: r.estado,
             numero_factura: r.numero_factura,
             fecha_emision: r.fecha_emision,
+            moneda: r.moneda,
+            tipo_factura: r.tipo_factura,
+            notas: r.notas,
             metadatos: r.metadatos,
           };
         });
         setReceipts(mapped);
       } else {
-        setReceipts([]); // Asegurar que se limpien los recibos si no hay datos
+        setReceipts([]); // Asegurar que se limpien los tickets si no hay datos
       }
 
       setLoadingData(false);
@@ -371,7 +496,7 @@ export default function RecibosPage() {
     return () => clearTimeout(handler);
   }, [inputValue, router]);
 
-  // Memoizamos los recibos filtrados para evitar recálculos innecesarios
+  // Memoizamos los tickets filtrados para evitar recálculos innecesarios
   const filteredReceipts = useMemo(() => {
     return sortData(receipts.filter((r) =>
       (selectedType ? r.documentType === selectedType : true) &&
@@ -385,7 +510,7 @@ export default function RecibosPage() {
 
   const totalPages = Math.max(1, Math.ceil(filteredReceipts.length / PAGE_SIZE));
 
-  // Memoizamos los recibos visibles
+  // Memoizamos los tickets visibles
   const visibleReceipts = useMemo(() => {
     return filteredReceipts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   }, [filteredReceipts, page]);
@@ -438,7 +563,7 @@ export default function RecibosPage() {
       setSelectedReceipts([]);
       setIsDeleteDialogOpen(false);
     } catch (error) {
-      setError('Error al eliminar los recibos');
+      setError('Error al eliminar los tickets');
     }
     setLoadingData(false);
   }, [selectedReceipts, loadReceipts]);
@@ -475,7 +600,7 @@ export default function RecibosPage() {
     <div className="bg-white p-6 rounded-3xl flex flex-col animate-fade-in border">
         <div className="flex flex-col gap-6 p-8">
         <div className="flex items-start justify-between gap-4 flex-wrap">
-            <h1 className="text-2xl font-semibold tracking-tight text-neutral-800">Recibos</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-neutral-800">Tickets</h1>
             <div className="flex items-center gap-3">
                 {selectedReceipts.length > 0 && (
                   <Button
@@ -586,6 +711,7 @@ export default function RecibosPage() {
                         Total {getSortIcon("total")}
                       </button>
                     </TableHead>
+                    <TableHead className="w-48 h-12">Notas</TableHead>
                     <TableHead className="w-10 h-12" />
                   </TableRow>
                 </TableHeader>
@@ -606,15 +732,20 @@ export default function RecibosPage() {
                             </div>
                           </TableCell>
                           <TableCell className="whitespace-nowrap">
-                          <Badge className="flex items-center gap-2 pl-2 w-fit" variant="neutral">
-                              <div className={`w-2 h-2 rounded-full ${DOC_TYPE_MAP[receipt.documentType]?.color || DOC_TYPE_MAP.other_financial.color}`} />
-                              {DOC_TYPE_MAP[receipt.documentType]?.label || DOC_TYPE_MAP.other_financial.label}
-                          </Badge>
+                            <QuickTypeChanger 
+                              receipt={receipt} 
+                              onTypeChanged={loadReceipts}
+                            />
                           </TableCell>
                           <TableCell className="whitespace-nowrap">
                             <IntegrationStatusBadge receipt={receipt} />
                           </TableCell>
                           <TableCell className="whitespace-nowrap">{formatCurrency(receipt.total)}</TableCell>
+                          <TableCell className="max-w-48">
+                            <div className="truncate text-sm text-gray-600">
+                              {receipt.notas || '-'}
+                            </div>
+                          </TableCell>
                           <TableCell className="whitespace-nowrap">
                           <div className="flex items-center gap-1">
                               <div className="inline-flex">
@@ -636,19 +767,34 @@ export default function RecibosPage() {
                               >
                                 <IconDownload className="h-4 w-4" />
                               </Button>
+                              <OriginalImageViewer receipt={receipt} />
+                              <EditReceiptDialog
+                                receipt={{
+                                  id: receipt.id,
+                                  proveedor: receipt.provider,
+                                  numero_factura: receipt.numero_factura || null,
+                                  total: receipt.total,
+                                  fecha_emision: receipt.fecha_emision || receipt.date,
+                                  moneda: receipt.moneda || 'EUR',
+                                  tipo_factura: receipt.tipo_factura || 'ticket',
+                                  notas: receipt.notas,
+                                  metadatos: receipt.metadatos
+                                }}
+                                onReceiptUpdated={loadReceipts}
+                              />
                           </div>
                           </TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                        <TableCell colSpan={7} className="text-center py-12">
+                        <TableCell colSpan={8} className="text-center py-12">
                           <div className="flex flex-col items-center justify-center space-y-4">
                             {/* Imagen SVG */}
                             <div className={`mx-auto mb-4 ${search || selectedType ? "w-64 h-64 -mt-10 -mb-10" : "w-48 h-48"}`}>
                               <img 
                                 src={search || selectedType ? "/Group 18.png" : "/Group 7.svg"}
-                                alt={search || selectedType ? "No se encontraron recibos" : "No hay recibos"} 
+                                alt={search || selectedType ? "No se encontraron tickets" : "No hay tickets"} 
                                 className="w-full h-full object-contain"
                               />
                             </div>
@@ -656,8 +802,8 @@ export default function RecibosPage() {
                             <div className="space-y-2">
                               <h3 className="text-lg font-medium text-neutral-900">
                                 {search || selectedType 
-                                  ? "No hay recibos que coincidan con tu búsqueda"
-                                  : "No tienes recibos aún"
+                                                  ? "No hay tickets que coincidan con tu búsqueda"
+                : "No tienes tickets aún"
                                 }
                               </h3>
                               <p className="text-sm text-neutral-500 max-w-md">
@@ -718,7 +864,7 @@ export default function RecibosPage() {
             </DialogHeader>
             <div className="py-4">
               <p className="text-sm text-neutral-600">
-                ¿Estás seguro de que quieres eliminar {selectedReceipts.length === 1 ? 'este recibo' : `estos ${selectedReceipts.length} recibos`}? 
+                ¿Estás seguro de que quieres eliminar {selectedReceipts.length === 1 ? 'este ticket' : `estos ${selectedReceipts.length} tickets`}? 
                 Esta acción no se puede deshacer.
               </p>
             </div>

@@ -36,13 +36,13 @@ const menuItems = [
     href: "/dashboard" 
   },
   { 
-    label: "Recibos", 
+    label: "Tickets", 
     icon: IconReceipt, 
     iconFilled: IconReceiptFilled, 
     href: "/dashboard/recibos" 
   },
   { 
-    label: "Subir Facturas", 
+    label: "Subir Tickets", 
     icon: IconPhoto, 
     iconFilled: IconPhotoFilled, 
     href: "/dashboard/subir-facturas" 
@@ -58,12 +58,6 @@ const menuItems = [
     icon: IconCreditCard, 
     iconFilled: IconCreditCardFilled, 
     href: "/dashboard/pricing" 
-  },
-  { 
-    label: "Empresa", 
-    icon: IconBasket, 
-    iconFilled: IconBasketFilled, 
-    href: "/dashboard/empresa" 
   },
   { 
     label: "Ajustes y ayuda", 

@@ -63,7 +63,7 @@ export default function SubirFacturasPage() {
   // Validar archivo
   const validateFile = (file: File): string | null => {
     if (!Object.keys(ACCEPTED_FILE_TYPES).includes(file.type)) {
-      return 'Tipo de archivo no válido. Solo se permiten imágenes (JPG, PNG, WebP) y PDFs.';
+      return 'Tipo de archivo no válido. Solo se permiten imágenes (JPG, PNG, WebP) y PDFs para tickets.';
     }
     if (file.size > MAX_FILE_SIZE) {
       return 'El archivo es demasiado grande. Tamaño máximo: 10MB.';
@@ -388,10 +388,10 @@ export default function SubirFacturasPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-neutral-800 mb-2">
-              Subir Facturas
+              Subir Tickets
             </h1>
             <p className="text-sm text-neutral-600">
-              Arrastra y suelta tus facturas para procesarlas automáticamente con IA.
+              Arrastra y suelta tus tickets para procesarlos automáticamente con IA.
             </p>
           </div>
           
@@ -445,7 +445,7 @@ export default function SubirFacturasPage() {
               
               <div className="space-y-2">
                 <h3 className="text-lg font-medium text-neutral-800">
-                  {isDragOver ? 'Suelta aquí tus archivos' : 'Arrastra y suelta tus facturas'}
+                  {isDragOver ? 'Suelta aquí tus archivos' : 'Arrastra y suelta tus tickets'}
                 </h3>
               </div>
               
@@ -453,7 +453,7 @@ export default function SubirFacturasPage() {
                 <p>JPG, PNG, WebP, PDF • Máx. 10MB</p>
                 <p className="flex items-center justify-center gap-1 border rounded-full px-2 py-1 mt-2 w-fit">
                   <IconRobot className="w-3 h-3" />
-                  Haz click para seleccionar o arrastra y suelta tus facturas
+                  Haz click para seleccionar o arrastra y suelta tus tickets
                 </p>
               </div>
             </div>

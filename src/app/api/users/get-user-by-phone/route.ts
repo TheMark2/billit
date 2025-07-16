@@ -73,7 +73,6 @@ export async function GET(request: NextRequest) {
       userid: user.id,
       id: user.id, // Alias para compatibilidad
       planid: user.plan_id,
-      empresa_id: user.empresa_id,
       recibosMessActual,
       limiteRecibos,
       recibosQuotaRemaining,
@@ -82,7 +81,6 @@ export async function GET(request: NextRequest) {
         id: user.id,
         email: user.email,
         telefono: user.telefono,
-        empresa_id: user.empresa_id,
         plan_id: user.plan_id,
         stripe_customer_id: user.stripe_customer_id,
         stripe_subscription_id: user.stripe_subscription_id,
@@ -176,7 +174,6 @@ export async function POST(request: NextRequest) {
       userid: user.id,
       id: user.id, // Alias para compatibilidad
       planid: user.plan_id,
-      empresa_id: user.empresa_id,
       recibosMessActual,
       limiteRecibos,
       recibosQuotaRemaining,
@@ -185,7 +182,6 @@ export async function POST(request: NextRequest) {
         id: user.id,
         email: user.email,
         telefono: user.telefono,
-        empresa_id: user.empresa_id,
         plan_id: user.plan_id,
         stripe_customer_id: user.stripe_customer_id,
         stripe_subscription_id: user.stripe_subscription_id,

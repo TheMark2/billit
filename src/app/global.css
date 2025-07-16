@@ -24,6 +24,10 @@
   * {
     @apply border-border;
   }
+  :root {
+    --font-plus-jakarta: 'Plus Jakarta Sans', sans-serif;
+    --font-lora: 'Lora', serif;
+  }
 }
 
 @theme inline {
@@ -66,29 +70,12 @@ body {
     text-wrap: balance;
   }
   
-  .animate-fade-in {
-    animation: fadeIn 0.6s ease-in-out;
+  .font-plus-jakarta {
+    font-family: var(--font-plus-jakarta);
   }
-}
-
-/* Animaciones para el gráfico */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.5; transform: scale(1.05); }
-}
-
-@keyframes shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
-}
-
-.animate-shimmer {
-  animation: shimmer 1.5s infinite;
+  .font-lora {
+    font-family: var(--font-lora);
+  }
 }
 
 /* Estilos para gráficos Recharts */
@@ -273,4 +260,31 @@ body {
   to {
     transform: translateX(-50%) translateY(-48%) translateY(-50%);
   }
+} 
+
+@keyframes border-flow {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-border-flow {
+  animation: border-flow 4s linear infinite;
+  background-size: 400% 400%;
+} 
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
 } 

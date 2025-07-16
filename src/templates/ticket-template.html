@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ticket de Compra - ReciptAI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #ffffff;
+            color: #333;
+            -webkit-print-color-adjust: exact;
+            font-size: 12px;
+        }
+
+        .container {
+            width: 400px;
+            margin: 10px auto;
+            padding: 20px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+        }
+
+        .ticket-header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 1px dashed #ccc;
+            padding-bottom: 15px;
+        }
+
+        .business-name {
+            font-size: 18px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .business-details {
+            font-size: 10px;
+            color: #666;
+            line-height: 1.3;
+        }
+
+        .ticket-info {
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 11px;
+        }
+
+        .ticket-info div {
+            margin-bottom: 3px;
+        }
+
+        .ticket-number {
+            font-weight: 600;
+            background-color: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            display: inline-block;
+        }
+
+        .customer-info {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            border: 1px solid #eee;
+        }
+
+        .customer-info h4 {
+            margin: 0 0 8px 0;
+            font-size: 12px;
+            color: #555;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .customer-info div {
+            font-size: 10px;
+            line-height: 1.3;
+            color: #666;
+        }
+
+        .items-section {
+            margin-bottom: 15px;
+        }
+
+        .items-header {
+            font-size: 11px;
+            font-weight: 600;
+            color: #555;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 3px;
+        }
+
+        .item-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px dotted #eee;
+        }
+
+        .item-row:last-child {
+            border-bottom: none;
+        }
+
+        .item-description {
+            flex: 1;
+            font-size: 11px;
+            line-height: 1.3;
+            margin-right: 10px;
+        }
+
+        .item-description .name {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .item-description .details {
+            color: #666;
+            font-size: 10px;
+            margin-top: 2px;
+        }
+
+        .item-price {
+            font-size: 11px;
+            font-weight: 500;
+            text-align: right;
+            min-width: 60px;
+        }
+
+        .totals-section {
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px dashed #ccc;
+        }
+
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 11px;
+        }
+
+        .total-row.subtotal {
+            color: #666;
+        }
+
+        .total-row.tax {
+            color: #666;
+            font-size: 10px;
+        }
+
+        .total-row.final {
+            font-size: 14px;
+            font-weight: 700;
+            border-top: 1px solid #333;
+            padding-top: 8px;
+            margin-top: 8px;
+            color: #333;
+        }
+
+        .payment-section {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #f0f8ff;
+            border-radius: 5px;
+            border: 1px solid #e0e7ff;
+            text-align: center;
+        }
+
+        .payment-section h4 {
+            margin: 0 0 5px 0;
+            font-size: 11px;
+            color: #555;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .payment-method {
+            font-size: 11px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .ticket-footer {
+            text-align: center;
+            font-size: 9px;
+            color: #999;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px dashed #ccc;
+            line-height: 1.4;
+        }
+
+        .thank-you {
+            font-size: 12px;
+            font-weight: 600;
+            color: #555;
+            text-align: center;
+            margin: 15px 0;
+            padding: 8px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            background-color: #e3f2fd;
+            color: #1976d2;
+            border-radius: 3px;
+            font-size: 9px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .highlight {
+            background-color: #fff3cd;
+            padding: 1px 3px;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Cabecera del negocio -->
+        <div class="ticket-header">
+            <div class="business-name">{{supplier}}</div>
+            <div class="business-details">
+                {{#if supplier_cif}}CIF: {{supplier_cif}}<br>{{/if}}
+                {{#if adress}}{{adress}}<br>{{/if}}
+                {{#if supplier_phone}}Tel: {{supplier_phone}}<br>{{/if}}
+                {{#if supplier_email}}{{supplier_email}}{{/if}}
+            </div>
+        </div>
+
+        <!-- Información del ticket -->
+        <div class="ticket-info">
+            {{#if invoice_number}}
+            <div>Ticket: <span class="ticket-number">{{invoice_number}}</span></div>
+            {{/if}}
+            {{#if date}}
+            <div>Fecha: {{date}}</div>
+            {{/if}}
+            {{#if document_type}}
+            <div><span class="badge">{{document_type}}</span></div>
+            {{/if}}
+        </div>
+
+
+
+        <!-- Artículos -->
+        <div class="items-section">
+            <div class="items-header">Artículos</div>
+            {{#each line_items}}
+            <div class="item-row">
+                <div class="item-description">
+                    <div class="name">{{description}}</div>
+                    <div class="details">{{quantity}} x {{formatCurrency unit_price ../currency}}</div>
+                </div>
+                <div class="item-price">{{formatCurrency total ../currency}}</div>
+            </div>
+            {{/each}}
+        </div>
+
+        <!-- Totales -->
+        <div class="totals-section">
+            <div class="total-row subtotal">
+                <span>Subtotal</span>
+                <span>{{formatCurrency total_net currency}}</span>
+            </div>
+            {{#if (hasTax total_tax)}}
+            <div class="total-row tax">
+                <span>IVA ({{tax_rate}}%)</span>
+                <span>{{formatCurrency total_tax currency}}</span>
+            </div>
+            {{/if}}
+            <div class="total-row final">
+                <span>TOTAL</span>
+                <span>{{formatCurrency total_amount currency}}</span>
+            </div>
+        </div>
+
+        <!-- Método de pago -->
+        {{#if payment_method}}
+        {{#unless (eq payment_method "No especificado")}}
+        <div class="payment-section">
+            <h4>Método de Pago</h4>
+            <div class="payment-method">{{payment_method}}</div>
+        </div>
+        {{/unless}}
+        {{/if}}
+
+        <!-- Mensaje de agradecimiento -->
+        <div class="thank-you">
+            ¡Gracias por su compra!
+        </div>
+
+        <!-- Pie del ticket -->
+        <div class="ticket-footer">
+            <div>Ticket procesado por <strong>ReciptAI</strong></div>
+            <div>Generado el {{current_date}}</div>
+            <div>Sistema de digitalización inteligente</div>
+        </div>
+    </div>
+</body>
+</html> 

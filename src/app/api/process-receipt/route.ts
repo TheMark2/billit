@@ -211,14 +211,14 @@ async function processFileFromWhatsApp(
     
     const receiptData = {
       user_id: userId,
-      empresa_id: additionalData.empresa_id,
       proveedor: mindeeResult.data.prediction?.supplier_name?.value || 'Proveedor no identificado',
-      numero_factura: mindeeResult.data.prediction?.invoice_number?.value || 'AUTO-' + Date.now(),
+      numero_factura: mindeeResult.data.prediction?.invoice_number?.value || null,
       total: mindeeResult.data.prediction?.total_amount?.value || 0,
       moneda: mindeeResult.data.prediction?.locale?.currency || 'EUR',
       fecha_emision: mindeeResult.data.prediction?.date?.value || new Date().toISOString().split('T')[0],
       fecha_subida: new Date().toISOString(),
       url_archivo: pdfResult?.success ? pdfResult.data.download_url : null,
+      tipo_factura: 'ticket', // Always use 'ticket' for digitized receipts
       metadatos: {
         mindee_data: mindeeResult.data,
         pdf_generation: pdfResult?.success ? {

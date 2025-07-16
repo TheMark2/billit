@@ -1,5 +1,7 @@
 import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
+// Para desarrollo, usar puppeteer completo con Chromium incluido
+const puppeteerDev = process.env.NODE_ENV === 'development' ? require('puppeteer') : null;
 import Handlebars from 'handlebars';
 import fs from 'fs';
 import path from 'path';
@@ -19,9 +21,31 @@ async function compileHtmlTemplate(templateData: any): Promise<string> {
       const formattedAmount = (amount || 0).toFixed(2);
       return `${formattedAmount} ${currency || 'EUR'}`;
     });
+
+    // Helper para verificar si un valor existe y no es 0
+    Handlebars.registerHelper('and', function(...args: any[]) {
+      // Quitar el objeto options del final
+      const values = args.slice(0, -1);
+      return values.every(val => val && val !== 0);
+    });
+
+    // Helper para verificar si un valor no es igual a otro
+    Handlebars.registerHelper('ne', function(v1: any, v2: any) {
+      return v1 !== v2;
+    });
+
+    // Helper para verificar si hay IVA
+    Handlebars.registerHelper('hasTax', function(total_tax: number) {
+      return total_tax && total_tax > 0;
+    });
+
+    // Helper para comparar valores
+    Handlebars.registerHelper('eq', function(v1: any, v2: any) {
+      return v1 === v2;
+    });
     
     // Leer el template HTML
-    const templatePath = path.join(process.cwd(), 'src/templates/invoice-template.html');
+    const templatePath = path.join(process.cwd(), 'src/templates/ticket-template.html');
     const templateContent = fs.readFileSync(templatePath, 'utf-8');
     
     // Compilar con Handlebars
@@ -45,8 +69,32 @@ async function generatePdfFromHtml(html: string): Promise<Buffer> {
     // Configurar Puppeteer con chromium optimizado para Vercel
     const isDev = process.env.NODE_ENV === 'development';
     
-    browser = await puppeteer.launch({
-      args: isDev ? [] : [
+    // Configuración para desarrollo y producción
+    const getChromePath = () => {
+      if (process.platform === 'darwin') {
+        return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+      } else if (process.platform === 'win32') {
+        return 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+      } else {
+        // Linux y otros
+        return '/usr/bin/google-chrome';
+      }
+    };
+    
+    const launchOptions = isDev ? {
+      // Configuración para desarrollo local
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage'
+      ],
+      defaultViewport: { width: 1920, height: 1080 },
+      headless: true,
+      // Intentar usar Chrome del sistema
+      executablePath: getChromePath()
+    } : {
+      // Configuración para producción (Vercel)
+      args: [
         ...chromium.args,
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -58,9 +106,44 @@ async function generatePdfFromHtml(html: string): Promise<Buffer> {
         '--disable-gpu'
       ],
       defaultViewport: { width: 1920, height: 1080 },
-      executablePath: isDev ? undefined : await chromium.executablePath(),
+      executablePath: await chromium.executablePath(),
       headless: true
-    });
+    };
+    
+    try {
+      // En desarrollo, usar puppeteer completo con Chromium incluido
+      if (isDev && puppeteerDev) {
+        console.log('🔄 [PDF_GENERATOR] Usando puppeteer completo para desarrollo...');
+        browser = await puppeteerDev.launch({
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage'
+          ],
+          defaultViewport: { width: 1920, height: 1080 },
+          headless: true
+        });
+      } else {
+        browser = await puppeteer.launch(launchOptions);
+      }
+    } catch (error) {
+      // Si falla en desarrollo, intentar con configuración alternativa
+      if (isDev) {
+        console.log('🔄 [PDF_GENERATOR] Intentando configuración alternativa para desarrollo...');
+        browser = await puppeteer.launch({
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage'
+          ],
+          defaultViewport: { width: 1920, height: 1080 },
+          headless: true
+          // Sin executablePath, deja que Puppeteer encuentre Chrome
+        });
+      } else {
+        throw error;
+      }
+    }
     
     const page = await browser.newPage();
     
@@ -101,7 +184,7 @@ async function uploadPdfToStorage(pdfBuffer: Buffer, fileName: string): Promise<
     
     // Subir archivo a Supabase Storage
     const { data, error } = await supabase.storage
-      .from('invoice-pdfs')
+      .from('ticket-pdfs')
       .upload(filePath, pdfBuffer, {
         contentType: 'application/pdf',
         upsert: true
@@ -114,7 +197,7 @@ async function uploadPdfToStorage(pdfBuffer: Buffer, fileName: string): Promise<
     
     // Obtener URL pública del archivo
     const { data: publicUrlData } = supabase.storage
-      .from('invoice-pdfs')
+      .from('ticket-pdfs')
       .getPublicUrl(filePath);
     
     return publicUrlData.publicUrl;
@@ -147,24 +230,22 @@ export async function generatePdfWithPuppeteer(mindeeData: any, userId?: string)
 
     if (userId) {
       try {
-        // Obtener información de la empresa del usuario
+        // Obtener información del perfil del usuario
         const { data: profile } = await supabase
           .from('profiles')
-          .select('empresa_id')
+          .select('nombre, apellido, email, telefono, nombre_fiscal, cif, direccion, email_facturacion')
           .eq('id', userId)
           .single();
 
-        if (profile?.empresa_id) {
-          const { data: empresa } = await supabase
-            .from('empresas')
-            .select('nombre_fiscal, cif, direccion, email_facturacion, telefono')
-            .eq('id', profile.empresa_id)
-            .single();
-
-          if (empresa) {
-            companyInfo = empresa;
+        if (profile) {
+            companyInfo = {
+              nombre_fiscal: profile.nombre_fiscal || `${profile.nombre} ${profile.apellido}`.trim(),
+              cif: profile.cif || '',
+              direccion: profile.direccion || '',
+              email_facturacion: profile.email_facturacion || profile.email || '',
+              telefono: profile.telefono || ''
+            };
           }
-        }
       } catch (error) {
         console.error('Error fetching company info:', error);
         // Continuar con valores por defecto si hay error
@@ -177,18 +258,22 @@ export async function generatePdfWithPuppeteer(mindeeData: any, userId?: string)
     const supplierEmail = mindeeData.supplier_email?.value || '';
     const taxInfo = mindeeData.taxes?.[0] || {};
     
-    // Procesar line items
-    const processedLineItems = mapLineItems(mindeeData.line_items || []);
+    // Procesar line items - usar edited_line_items si están disponibles, sino usar line_items originales
+    const lineItemsToProcess = mindeeData.edited_line_items || mindeeData.line_items || [];
+    const processedLineItems = mapLineItems(lineItemsToProcess);
+    
+    // Calcular totales basándose en los line items procesados
+    const calculatedTotals = calculateTotalsFromLineItems(processedLineItems);
     
     // Mapear los datos para el template
     const templateData = {
-      // Información del proveedor
-      supplier: mindeeData.supplier_name || 'Proveedor no identificado',
+      // Información del proveedor - usar datos editados si están disponibles
+      supplier: mindeeData.proveedor || mindeeData.supplier_name || 'Establecimiento',
       supplier_cif: supplierRegistration,
       supplier_phone: supplierPhone,
       supplier_email: supplierEmail,
-      adress: mindeeData.supplier_address || 'Dirección no disponible',
-      city: extractCityFromAddress(mindeeData.supplier_address),
+      adress: mindeeData.supplier_address || null,
+
       
       // Información del cliente (empresa del usuario)
       customer_name: companyInfo.nombre_fiscal,
@@ -197,25 +282,25 @@ export async function generatePdfWithPuppeteer(mindeeData: any, userId?: string)
       customer_phone: companyInfo.telefono || '',
       customer_email: companyInfo.email_facturacion || '',
       
-      // Fechas
-      date: mindeeData.date || new Date().toISOString().split('T')[0],
+      // Fechas - usar datos editados si están disponibles
+      date: mindeeData.fecha_emision || mindeeData.date || new Date().toISOString().split('T')[0],
       due_date: mindeeData.due_date?.value || null,
       current_date: new Date().toLocaleDateString('es-ES'),
       
-      // Información financiera
-      currency: mindeeData.currency || 'EUR',
-      total_amount: mindeeData.total_amount || 0,
-      total_net: mindeeData.total_net || 0,
-      total_tax: mindeeData.total_tax || 0,
+      // Información financiera - usar datos editados si están disponibles
+      currency: mindeeData.moneda || mindeeData.currency || 'EUR',
+      total_amount: mindeeData.total || mindeeData.total_amount || calculatedTotals.total,
+      total_net: mindeeData.total_net || calculatedTotals.subtotal,
+      total_tax: mindeeData.total_tax || calculatedTotals.totalTax,
       
       // Información de impuestos
       tax_rate: taxInfo.rate || 21,
       tax_base: taxInfo.base || 0,
       tax_amount: taxInfo.value || 0,
       
-      // Documento
-      invoice_number: mindeeData.invoice_number || `AUTO-${Date.now()}`,
-      document_type: mindeeData.document_type || 'Factura',
+      // Documento - usar datos editados si están disponibles (solo si existe realmente)
+      invoice_number: mindeeData.numero_factura || mindeeData.invoice_number || null,
+      document_type: mindeeData.document_type || null,
       
       // Items procesados
       line_items: processedLineItems,
@@ -234,8 +319,10 @@ export async function generatePdfWithPuppeteer(mindeeData: any, userId?: string)
     const pdfBuffer = await generatePdfFromHtml(html);
     console.log(`${LOG_PREFIX} PDF generado exitosamente`);
     
-    // Crear nombre de archivo único
-    const fileName = `invoice-${templateData.invoice_number}-${Date.now()}.pdf`;
+    // Crear nombre de archivo con proveedor y fecha
+    const supplierName = (templateData.supplier || 'ticket').replace(/[^a-zA-Z0-9]/g, '_');
+    const date = templateData.date ? templateData.date.replace(/[^0-9-]/g, '') : new Date().toISOString().split('T')[0];
+    const fileName = `${supplierName}_${date}_${Date.now()}.pdf`;
     
     // Subir PDF a almacenamiento
     const pdfUrl = await uploadPdfToStorage(pdfBuffer, fileName);
@@ -266,20 +353,46 @@ export async function generatePdfWithPuppeteer(mindeeData: any, userId?: string)
 // Función auxiliar para mapear los items de línea
 function mapLineItems(lineItems: any[]): any[] {
   if (!lineItems || lineItems.length === 0) {
-    return [{
-      description: 'Producto/Servicio no especificado',
-      quantity: 1,
-      unit_price: 0,
-      total: 0
-    }];
+    return [];
   }
 
-  return lineItems.map(item => ({
-    description: item.description || 'Producto/Servicio',
-    quantity: parseFloat(item.quantity) || 1,
-    unit_price: parseFloat(item.unit_price) || 0,
-    total: parseFloat(item.total_amount) || 0
-  }));
+  return lineItems.map(item => {
+    // Verificar si es un edited_line_item (del componente EditReceiptDialog)
+    if (item.concepto !== undefined && item.descripcion !== undefined) {
+      const quantity = parseFloat(item.cantidad) || 1;
+      const total = parseFloat(item.total) || 0;
+      let unitPrice = parseFloat(item.precio) || 0;
+      
+      // Si no hay precio unitario pero sí total y cantidad, calcularlo
+      if (unitPrice === 0 && total > 0 && quantity > 0) {
+        unitPrice = total / quantity;
+      }
+      
+      return {
+        description: item.concepto || item.descripcion || 'Producto/Servicio',
+        quantity: quantity,
+        unit_price: unitPrice,
+        total: total
+      };
+    }
+    
+    // Si no, es un line_item original de Mindee
+    const quantity = parseFloat(item.quantity) || 1;
+    const total = parseFloat(item.total_amount) || 0;
+    let unitPrice = parseFloat(item.unit_price) || 0;
+    
+    // Si no hay precio unitario pero sí total y cantidad, calcularlo
+    if (unitPrice === 0 && total > 0 && quantity > 0) {
+      unitPrice = total / quantity;
+    }
+    
+    return {
+      description: item.description || 'Producto/Servicio',
+      quantity: quantity,
+      unit_price: unitPrice,
+      total: total
+    };
+  });
 }
 
 // Función auxiliar para extraer información de pago
@@ -305,25 +418,36 @@ function extractPaymentMethod(paymentDetails: any[]): string {
   return 'No especificado';
 }
 
-// Función auxiliar para extraer la ciudad de la dirección
-function extractCityFromAddress(address: string | null): string {
-  if (!address) return 'Ciudad no disponible';
+// Función auxiliar para calcular totales basándose en los line items
+function calculateTotalsFromLineItems(lineItems: any[]): {
+  subtotal: number;
+  totalTax: number;
+  total: number;
+} {
+  let subtotal = 0;
+  let totalTax = 0;
   
-  // Buscar patrones comunes de ciudades en España
-  const cityPatterns = [
-    /([A-ZÁÉÍÓÚÑ][a-záéíóúñ\s]+)(?:,|\s+\d{5}|\s+[A-Z]{2})/,
-    /([A-ZÁÉÍÓÚÑ][a-záéíóúñ\s]+)$/
-  ];
-  
-  for (const pattern of cityPatterns) {
-    const match = address.match(pattern);
-    if (match) {
-      return match[1].trim();
+  lineItems.forEach(item => {
+    const itemTotal = item.total || 0;
+    subtotal += itemTotal;
+    
+    // Solo calcular impuestos si están especificados explícitamente
+    if (item.impuestos !== undefined && item.impuestos > 0) {
+      totalTax += (itemTotal * item.impuestos) / 100;
     }
-  }
+    // NO asumir IVA automáticamente si no está especificado
+  });
   
-  return address.split(',')[0].trim() || 'Ciudad no disponible';
+  const total = subtotal + totalTax;
+  
+  return {
+    subtotal,
+    totalTax,
+    total
+  };
 }
+
+
 
 // Función para crear el bucket de almacenamiento si no existe
 export async function ensurePdfStorageBucket(): Promise<void> {
