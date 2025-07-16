@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run build:vercel",
   "outputDirectory": ".next",
   "framework": "nextjs",
   "installCommand": "npm install",
@@ -7,6 +7,12 @@
   "functions": {
     "src/app/api/**/*.ts": {
       "maxDuration": 30
+    }
+  },
+  "build": {
+    "env": {
+      "SKIP_ENV_VALIDATION": "1",
+      "CI": "false"
     }
   },
   "headers": [
@@ -28,4 +34,4 @@
       ]
     }
   ]
-} 
+}

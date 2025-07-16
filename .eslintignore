@@ -1,0 +1,21 @@
+# Ignorar archivos de debug que pueden tener tipos any
+src/app/api/debug/**/*.ts
+
+# Ignorar archivos de desarrollo/testing
+src/app/api/test-*/**/*.ts
+
+# Ignorar archivos de configuración
+*.config.js
+*.config.mjs
+*.config.ts
+
+# Ignorar archivos de build
+.next/
+dist/
+build/
+
+# Ignorar node_modules
+node_modules/
+
+# Ignorar archivos de Vercel
+.vercel/

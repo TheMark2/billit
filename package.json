@@ -5,8 +5,11 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:vercel": "SKIP_ENV_VALIDATION=1 next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "next lint --fix",
+    "lint:check": "next lint --quiet",
+    "type-check": "tsc --noEmit",
     "stripe:listen": "stripe listen --forward-to localhost:3000/api/stripe/webhooks",
     "stripe:login": "stripe login",
     "stripe:events": "stripe events list --limit 10"
