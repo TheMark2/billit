@@ -1,7 +1,13 @@
 import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 // Para desarrollo, usar puppeteer completo con Chromium incluido
-const puppeteerDev = process.env.NODE_ENV === 'development' ? require('puppeteer') : null;
+let puppeteerDev;
+try {
+  puppeteerDev = process.env.NODE_ENV === 'development' ? require('puppeteer') : null;
+} catch (error) {
+  console.warn('Puppeteer no está disponible, se usará configuración alternativa');
+  puppeteerDev = null;
+}
 import Handlebars from 'handlebars';
 import fs from 'fs';
 import path from 'path';
@@ -62,7 +68,7 @@ async function compileHtmlTemplate(templateData: any): Promise<string> {
 }
 
 // Función para generar PDF usando Puppeteer con Chromium optimizado para Vercel
-async function generatePdfFromHtml(html: string): Promise<Buffer> {
+async function generatePdfFromHtml(html: string, templateData?: any): Promise<Buffer> {
   let browser;
   
   try {
@@ -71,14 +77,32 @@ async function generatePdfFromHtml(html: string): Promise<Buffer> {
     
     // Configuración para desarrollo y producción
     const getChromePath = () => {
-      if (process.platform === 'darwin') {
-        return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-      } else if (process.platform === 'win32') {
-        return 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-      } else {
-        // Linux y otros
-        return '/usr/bin/google-chrome';
+      // Buscar Chrome en ubicaciones comunes
+      const possiblePaths = {
+        darwin: [
+          '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+          '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
+          '/Applications/Chromium.app/Contents/MacOS/Chromium'
+        ],
+        win32: [
+          'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+          'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+        ],
+        linux: [
+          '/usr/bin/google-chrome',
+          '/usr/bin/chromium-browser',
+          '/usr/bin/chromium'
+        ]
+      };
+      
+      const paths = possiblePaths[process.platform as keyof typeof possiblePaths] || [];
+      
+      // En desarrollo, no especificar ruta para que Puppeteer use su Chromium incluido
+      if (isDev && puppeteerDev) {
+        return undefined;
       }
+      
+      return paths[0]; // Devolver la primera ruta por defecto
     };
     
     const launchOptions = isDev ? {
@@ -90,8 +114,8 @@ async function generatePdfFromHtml(html: string): Promise<Buffer> {
       ],
       defaultViewport: { width: 1920, height: 1080 },
       headless: true,
-      // Intentar usar Chrome del sistema
-      executablePath: getChromePath()
+      // En desarrollo, no especificar ruta para que Puppeteer use su Chromium incluido
+      executablePath: undefined
     } : {
       // Configuración para producción (Vercel)
       args: [
@@ -114,6 +138,7 @@ async function generatePdfFromHtml(html: string): Promise<Buffer> {
       // En desarrollo, usar puppeteer completo con Chromium incluido
       if (isDev && puppeteerDev) {
         console.log('🔄 [PDF_GENERATOR] Usando puppeteer completo para desarrollo...');
+        // Usar puppeteerDev que tiene Chromium incluido, sin especificar executablePath
         browser = await puppeteerDev.launch({
           args: [
             '--no-sandbox',
@@ -127,20 +152,50 @@ async function generatePdfFromHtml(html: string): Promise<Buffer> {
         browser = await puppeteer.launch(launchOptions);
       }
     } catch (error) {
-      // Si falla en desarrollo, intentar con configuración alternativa
-      if (isDev) {
+      console.log('🔄 [PDF_GENERATOR] Error al lanzar Puppeteer:', error);
+      
+      // Si estamos en desarrollo y tenemos puppeteerDev disponible
+      if (isDev && puppeteerDev) {
         console.log('🔄 [PDF_GENERATOR] Intentando configuración alternativa para desarrollo...');
-        browser = await puppeteer.launch({
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage'
-          ],
-          defaultViewport: { width: 1920, height: 1080 },
-          headless: true
-          // Sin executablePath, deja que Puppeteer encuentre Chrome
-        });
+        try {
+          // Configuración simplificada para desarrollo
+          const simpleOptions = {
+            args: [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-dev-shm-usage'
+            ],
+            defaultViewport: { width: 1920, height: 1080 },
+            headless: true,
+            // No especificar executablePath para usar el Chromium incluido
+          };
+          
+          // Usar directamente puppeteerDev que incluye Chromium
+          browser = await puppeteerDev.launch(simpleOptions);
+          console.log('🔄 [PDF_GENERATOR] Configuración alternativa exitosa');
+        } catch (secondError) {
+          console.log('🔄 [PDF_GENERATOR] Configuración alternativa también falló:', secondError);
+          
+          // Usar el generador de PDF de fallback si tenemos datos de plantilla
+          if (templateData) {
+            console.log('🔄 [PDF_GENERATOR] Generando PDF de fallback con datos de plantilla...');
+            return await generateFallbackPdf(templateData);
+          } else {
+            // Crear un PDF de fallback simple si no hay datos de plantilla
+            console.log('🔄 [PDF_GENERATOR] Generando PDF de fallback simple...');
+            return Buffer.from(
+              `<html><body><h1>PDF de Fallback</h1><p>No se pudo generar el PDF completo debido a problemas con Puppeteer.</p><p>${new Date().toISOString()}</p></body></html>`,
+              'utf-8'
+            );
+          }
+        }
       } else {
+        // En producción, intentar usar el fallback si hay datos de plantilla
+        if (templateData) {
+          console.log('🔄 [PDF_GENERATOR] Generando PDF de fallback en producción...');
+          return await generateFallbackPdf(templateData);
+        }
+        // Si no hay datos de plantilla, propagar el error
         throw error;
       }
     }
@@ -169,6 +224,17 @@ async function generatePdfFromHtml(html: string): Promise<Buffer> {
     
   } catch (error) {
     console.error('Error generating PDF:', error);
+    
+    // Intentar usar el fallback si hay datos de plantilla
+    if (templateData) {
+      console.log('🔄 [PDF_GENERATOR] Intentando generar PDF de fallback después de error...');
+      try {
+        return await generateFallbackPdf(templateData);
+      } catch (fallbackError) {
+        console.error('Error en fallback:', fallbackError);
+      }
+    }
+    
     throw new Error('Error generando el PDF');
   } finally {
     if (browser) {
@@ -208,6 +274,104 @@ async function uploadPdfToStorage(pdfBuffer: Buffer, fileName: string): Promise<
   }
 }
 
+// Función para generar un PDF de fallback simple cuando Puppeteer falla
+async function generateFallbackPdf(templateData: any): Promise<Buffer> {
+  // Crear un HTML simple con los datos básicos
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Factura Simplificada</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .info-block { margin-bottom: 20px; }
+        .info-row { display: flex; margin-bottom: 5px; }
+        .info-label { font-weight: bold; width: 150px; }
+        .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .table th, .table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .table th { background-color: #f2f2f2; }
+        .total-block { margin-top: 30px; text-align: right; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h1>Factura Simplificada</h1>
+        <p><em>Documento generado en modo fallback</em></p>
+      </div>
+      
+      <div class="info-block">
+        <h3>Proveedor</h3>
+        <div class="info-row">
+          <div class="info-label">Nombre:</div>
+          <div>${templateData.supplier || 'No disponible'}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">CIF/NIF:</div>
+          <div>${templateData.supplier_cif || 'No disponible'}</div>
+        </div>
+      </div>
+      
+      <div class="info-block">
+        <h3>Detalles de Factura</h3>
+        <div class="info-row">
+          <div class="info-label">Fecha:</div>
+          <div>${templateData.date || new Date().toLocaleDateString()}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">Número:</div>
+          <div>${templateData.invoice_number || 'No disponible'}</div>
+        </div>
+      </div>
+      
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Descripción</th>
+            <th>Cantidad</th>
+            <th>Precio</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${templateData.line_items?.map((item: any) => `
+            <tr>
+              <td>${item.description || 'Producto/Servicio'}</td>
+              <td>${item.quantity || 1}</td>
+              <td>${item.unit_price || 0} ${templateData.currency || 'EUR'}</td>
+              <td>${item.total || 0} ${templateData.currency || 'EUR'}</td>
+            </tr>
+          `).join('') || '<tr><td colspan="4">No hay items disponibles</td></tr>'}
+        </tbody>
+      </table>
+      
+      <div class="total-block">
+        <div class="info-row">
+          <div class="info-label">Subtotal:</div>
+          <div>${templateData.total_net || 0} ${templateData.currency || 'EUR'}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">IVA (${templateData.tax_rate || 21}%):</div>
+          <div>${templateData.total_tax || 0} ${templateData.currency || 'EUR'}</div>
+        </div>
+        <div class="info-row" style="font-weight: bold;">
+          <div class="info-label">TOTAL:</div>
+          <div>${templateData.total_amount || 0} ${templateData.currency || 'EUR'}</div>
+        </div>
+      </div>
+      
+      <div style="margin-top: 50px; font-size: 12px; color: #666;">
+        <p>Este documento es una versión simplificada generada en modo fallback.</p>
+        <p>Generado el: ${new Date().toLocaleString()}</p>
+      </div>
+    </body>
+    </html>
+  `;
+  
+  return Buffer.from(html, 'utf-8');
+}
+
 // Función principal para generar PDF (reemplaza a generatePdfWithApiTemplate)
 export async function generatePdfWithPuppeteer(mindeeData: any, userId?: string): Promise<{
   success: boolean;
@@ -215,6 +379,7 @@ export async function generatePdfWithPuppeteer(mindeeData: any, userId?: string)
   error?: string;
 }> {
   const LOG_PREFIX = '🔄 [PDF_GENERATOR]';
+  const isDev = process.env.NODE_ENV === 'development';
   
   try {
     console.log(`${LOG_PREFIX} Iniciando generación de PDF con Puppeteer...`);
@@ -302,6 +467,9 @@ export async function generatePdfWithPuppeteer(mindeeData: any, userId?: string)
       invoice_number: mindeeData.numero_factura || mindeeData.invoice_number || null,
       document_type: mindeeData.document_type || null,
       
+      // Categoría del negocio (análisis IA)
+      categoria: mindeeData.categoria_negocio || null,
+      
       // Items procesados
       line_items: processedLineItems,
       
@@ -316,7 +484,7 @@ export async function generatePdfWithPuppeteer(mindeeData: any, userId?: string)
     console.log(`${LOG_PREFIX} Template HTML compilado`);
     
     // Generar PDF
-    const pdfBuffer = await generatePdfFromHtml(html);
+    const pdfBuffer = await generatePdfFromHtml(html, templateData);
     console.log(`${LOG_PREFIX} PDF generado exitosamente`);
     
     // Crear nombre de archivo con proveedor y fecha
@@ -465,4 +633,4 @@ export async function ensurePdfStorageBucket(): Promise<void> {
   } catch (error) {
     console.error('Error ensuring storage bucket:', error);
   }
-} 
+}

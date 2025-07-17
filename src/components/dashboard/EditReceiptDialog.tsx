@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import Select from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { IconEdit, IconCheck, IconX, IconPlus, IconTrash, IconReceipt, IconGripVertical, IconReload } from '@tabler/icons-react';
 import { supabase } from '@/lib/supabaseClient';
 import { formatCurrency } from '@/lib/utils';
@@ -278,12 +278,18 @@ function SortableLineItem({
         />
       </div>
       <div className="col-span-1 px-3 py-2 border-r border-gray-200">
-        <Select
-          options={TAX_RATE_OPTIONS}
-          value={item.impuestos.toString()}
-          onChange={(value) => onLineItemChange(item.id, 'impuestos', parseInt(value))}
-          className="h-8"
-        />
+        <Select value={item.impuestos.toString()} onValueChange={(value) => onLineItemChange(item.id, 'impuestos', parseInt(value))}>
+          <SelectTrigger className="h-8">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TAX_RATE_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="col-span-2 px-3 py-2 border-r border-gray-200">
         <div className="flex items-center h-8 px-2 text-sm font-medium">
@@ -652,19 +658,33 @@ export default function EditReceiptDialog({ receipt, onReceiptUpdated, trigger }
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium block mb-1">Moneda</label>
-                  <Select
-                    options={CURRENCY_OPTIONS}
-                    value={formData.moneda}
-                    onChange={(value) => handleInputChange('moneda', value)}
-                  />
+                  <Select value={formData.moneda} onValueChange={(value) => handleInputChange('moneda', value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar moneda" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CURRENCY_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="text-sm font-medium block mb-1">Tipo de documento</label>
-                  <Select
-                    options={DOC_TYPE_OPTIONS}
-                    value={formData.tipo_factura}
-                    onChange={(value) => handleInputChange('tipo_factura', value)}
-                  />
+                  <Select value={formData.tipo_factura} onValueChange={(value) => handleInputChange('tipo_factura', value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DOC_TYPE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -785,4 +805,4 @@ export default function EditReceiptDialog({ receipt, onReceiptUpdated, trigger }
       </DialogContent>
     </Dialog>
   );
-} 
+}

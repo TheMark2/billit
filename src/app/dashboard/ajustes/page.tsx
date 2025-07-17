@@ -3,7 +3,9 @@
 import React, { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, UploadCloud } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import { AlertCircle, UploadCloud, Brain } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -28,37 +30,55 @@ export default function AjustesPage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [cityInputFocused, setCityInputFocused] = useState(false);
   const [company, setCompany] = useState("");
+  const [autoAIAnalysis, setAutoAIAnalysis] = useState(true);
 
   useEffect(() => {
     const fetchProfile = async () => {
       setLoading(true);
+      console.log("🔍 Iniciando carga del perfil...");
+      
       const {
         data: { session },
         error: sessionError,
       } = await supabase.auth.getSession();
+      
       if (sessionError) {
-        console.error("Error al obtener la sesión:", sessionError);
+        console.error("❌ Error al obtener la sesión:", sessionError);
         return setLoading(false);
       }
+      
       const user = session?.user;
-      if (!user) return setLoading(false);
+      if (!user) {
+        console.log("⚠️ No hay usuario en la sesión");
+        return setLoading(false);
+      }
+
+      console.log("👤 Usuario encontrado:", user.id);
 
       const { data, error } = await supabase
         .from("profiles")
-        .select("nombre,apellido,email,telefono,avatar_url,ciudad,nacimiento,empresa,plan_id,is_subscribed")
+        .select("nombre,apellido,email,telefono,avatar_url,ciudad,nacimiento,plan_id,is_subscribed,auto_ai_analysis")
         .eq("id", user.id)
         .single();
 
       if (error) {
-        console.error("Error al cargar el perfil:", error);
+        console.error("❌ Error al cargar el perfil:", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
       } else if (data) {
+        console.log("✅ Perfil cargado exitosamente:", data);
         setFirstName(data.nombre ?? "");
         setLastName(data.apellido ?? "");
         setEmail(data.email ?? user.email ?? "");
         setPhone(data.telefono ?? "");
         setCity(data.ciudad ?? "");
         setBirthDate(data.nacimiento ?? "");
-        setCompany(data.empresa ?? "");
+        // Nota: empresa ya no existe en la BD, mantenemos el campo vacío en la UI
+        setCompany("");
+        setAutoAIAnalysis(data.auto_ai_analysis ?? true);
 
         if (data.avatar_url) {
           const { data: publicUrl } = supabase.storage
@@ -66,6 +86,8 @@ export default function AjustesPage() {
             .getPublicUrl(data.avatar_url);
           setProfileImg(publicUrl.publicUrl);
         }
+      } else {
+        console.log("⚠️ No se encontraron datos del perfil");
       }
       setLoading(false);
     };
@@ -80,23 +102,34 @@ export default function AjustesPage() {
 
   const handleSave = async () => {
     setLoading(true);
+    console.log("💾 Iniciando guardado del perfil...");
+    
     const {
       data: { session },
     } = await supabase.auth.getSession();
+    
     const user = session?.user;
     if (!user) {
+      console.log("⚠️ No hay usuario para guardar");
       setLoading(false);
       return;
     }
 
+    console.log("👤 Guardando perfil para usuario:", user.id);
+
     let avatarPath: string | undefined;
     if (avatarFile) {
+      console.log("📸 Subiendo avatar...");
       const fileExt = avatarFile.name.split(".").pop();
       avatarPath = `${user.id}/avatar.${fileExt}`;
       const { error: uploadError } = await supabase.storage
         .from("avatars")
         .upload(avatarPath, avatarFile, { upsert: true });
-      if (uploadError) console.error(uploadError);
+      if (uploadError) {
+        console.error("❌ Error subiendo avatar:", uploadError);
+      } else {
+        console.log("✅ Avatar subido exitosamente");
+      }
     }
 
     const updates = {
@@ -107,13 +140,23 @@ export default function AjustesPage() {
       telefono: phone,
       ciudad: city,
       nacimiento: birthDate,
-      empresa: company,
+      auto_ai_analysis: autoAIAnalysis,
+      // Nota: empresa eliminado porque ya no existe en la BD
       ...(avatarPath && { avatar_url: avatarPath }),
     };
 
+    console.log("📝 Datos a actualizar:", updates);
+
     const { error } = await supabase.from("profiles").upsert(updates);
     if (error) {
-      console.error("Error guardando perfil:", error.message || error);
+      console.error("❌ Error guardando perfil:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+    } else {
+      console.log("✅ Perfil guardado exitosamente");
     }
 
     setLoading(false);
@@ -151,6 +194,41 @@ export default function AjustesPage() {
             <p className="text-sm text-neutral-500">Detalles de tu suscripción y límites de recibos</p>
           </div>
           <PlanInfo className="max-w-md" />
+        </div>
+
+        {/* Separador */}
+        <Separator className="my-8" />
+
+        {/* Configuración de IA */}
+        <div className="grid grid-cols-[350px_1fr] gap-10 items-start">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Brain className="w-5 h-5 text-blue-600" />
+              Análisis con IA
+            </h2>
+            <p className="text-sm text-neutral-500">Configura el análisis automático de tus tickets con inteligencia artificial</p>
+          </div>
+          <div className="flex flex-col gap-4 w-full">
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div className="space-y-1">
+                <h3 className="font-medium">Análisis automático</h3>
+                <p className="text-sm text-neutral-500">
+                  Analiza automáticamente cada ticket al subirlo para generar descripciones y categorizar el tipo de negocio
+                </p>
+              </div>
+              <Switch
+                checked={autoAIAnalysis}
+                onCheckedChange={setAutoAIAnalysis}
+              />
+            </div>
+            {autoAIAnalysis && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-700">
+                  ✨ El análisis automático está activado. Cada ticket que subas será analizado automáticamente para generar una descripción y categorizar el tipo de negocio.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Separador */}
@@ -262,7 +340,10 @@ export default function AjustesPage() {
             <Input label="Fecha de nacimiento" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
 
             {/* Empresa */}
-            <Input label="Empresa" value={company} onChange={(e) => setCompany(e.target.value)} />
+            <div className="space-y-2">
+              <Input label="Empresa" value={company} onChange={(e) => setCompany(e.target.value)} />
+              <p className="text-xs text-neutral-500">Nota: Este campo ya no se guarda en el perfil.</p>
+            </div>
           </div>
         </div>
 
@@ -282,4 +363,4 @@ export default function AjustesPage() {
     </div>
     </div>
   );
-} 
+}

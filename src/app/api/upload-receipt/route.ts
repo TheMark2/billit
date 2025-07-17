@@ -7,6 +7,55 @@ import { uploadOriginalImage } from '@/lib/supabase-storage';
 const MINDEE_API_KEY = '1d6ac579ba024d9fb6c0ebcffdf2b5a0';
 const MINDEE_API_URL = 'https://api.mindee.net/v1/products/mindee/expense_receipts/v5/predict';
 
+// Función para ejecutar análisis automático de IA
+async function performAutoAIAnalysis(receiptId: string, userId: string) {
+  try {
+    // Verificar si el usuario tiene habilitado el análisis automático
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('auto_ai_analysis')
+      .eq('id', userId)
+      .single();
+
+    // Si el usuario tiene deshabilitado el análisis automático, no hacer nada
+    if (profile?.auto_ai_analysis === false) {
+      console.log('Auto AI analysis disabled for user:', userId);
+      return;
+    }
+
+    // Llamar a la API de análisis de IA
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    
+    console.log('Using baseUrl for AI analysis:', baseUrl);
+    
+    // Asegurarse de que la URL sea correcta
+    const apiUrl = `${baseUrl}/api/analyze-receipt-ai`;
+    console.log('Calling AI analysis API at:', apiUrl);
+    
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ receiptId }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`AI analysis failed: ${response.statusText}`);
+    }
+
+    console.log('Auto AI analysis completed for receipt:', receiptId);
+  } catch (error) {
+    console.error('Error in auto AI analysis:', error);
+    throw error;
+  }
+}
+
 // Función para crear un evento SSE
 function createSSEEvent(data: any, event?: string): string {
   const eventData = `data: ${JSON.stringify(data)}\n\n`;
@@ -302,6 +351,21 @@ export async function POST(request: NextRequest) {
                 error: `${dbError.message} (Code: ${dbError.code})`
               })));
             } else {
+              // Análisis automático de IA (95%)
+              controller.enqueue(encoder.encode(createSSEEvent({
+                progress: 95,
+                message: 'Analizando ticket con IA...',
+                stage: 'ai_analysis'
+              })));
+
+              // Ejecutar análisis de IA automáticamente
+              try {
+                await performAutoAIAnalysis(receiptData.id, user.id);
+              } catch (aiError) {
+                console.warn('AI analysis failed:', aiError);
+                // No fallar el proceso por error de IA
+              }
+
               // Completado (100%)
               controller.enqueue(encoder.encode(createSSEEvent({
                 progress: 100,
@@ -585,6 +649,14 @@ export async function POST(request: NextRequest) {
     } catch (notificationError) {
       console.error('Error creating notification:', notificationError);
       // No fallar por error de notificación
+    }
+
+    // Ejecutar análisis de IA automáticamente
+    try {
+      await performAutoAIAnalysis(receiptData.id, user.id);
+    } catch (aiError) {
+      console.warn('AI analysis failed:', aiError);
+      // No fallar el proceso por error de IA
     }
 
     return NextResponse.json({
@@ -2008,4 +2080,4 @@ export async function sendToOdoo(mindeeData: any, credentials: any): Promise<{
       error: errorMessage
     };
   }
-} 
+}

@@ -10,13 +10,19 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table";
-import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
+import { CalendarIcon, Filter, X } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Trash2, Brain, Sparkles } from "lucide-react";
 import { IconEye, IconDownload, IconFileInvoice, IconReceipt2, IconQuote, IconShoppingCart, IconReport, IconNotes, IconReceiptRefund, IconFileDollar, IconRefresh, IconPhoto } from "@tabler/icons-react";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,7 +30,6 @@ import { ReceiptsTableSkeleton } from "@/components/dashboard/Skeletons";
 import PdfViewer from "@/components/dashboard/PdfViewer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import EditReceiptDialog from "@/components/dashboard/EditReceiptDialog";
-import Select from "@/components/ui/select";
 
 interface Receipt {
   id: string;
@@ -54,6 +59,11 @@ interface Receipt {
       };
     };
     mindee_data?: any;
+    ai_analysis?: {
+      business_category?: string;
+      confidence?: number;
+      analyzed_at?: string;
+    };
   };
 }
 
@@ -308,13 +318,18 @@ const QuickTypeChanger = ({ receipt, onTypeChanged }: {
       
       {/* Select oculto que se activa con hover */}
       <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity">
-        <Select
-          options={typeOptions}
-          value={receipt.documentType}
-          onChange={handleTypeChange}
-          disabled={isChanging}
-          className="text-xs absolute inset-0 w-full h-full opacity-0"
-        />
+        <Select value={receipt.documentType} onValueChange={handleTypeChange} disabled={isChanging}>
+          <SelectTrigger className="text-xs absolute inset-0 w-full h-full opacity-0 border-none bg-transparent">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {typeOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </Badge>
   );
@@ -332,6 +347,15 @@ export default function RecibosPage() {
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [selectedReceipts, setSelectedReceipts] = useState<string[]>([]);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState<string[]>([]);
+  const [isBulkAnalyzing, setIsBulkAnalyzing] = useState(false);
+  
+  // Estados para filtros avanzados
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const [selectedQuarter, setSelectedQuarter] = useState<string | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<{start: string, end: string}>({start: '', end: ''});
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -508,12 +532,133 @@ export default function RecibosPage() {
     ));
   }, [receipts, selectedType, search, sortData]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredReceipts.length / PAGE_SIZE));
+  const uniqueProviders = useMemo(() => {
+    const providers = receipts.map(receipt => receipt.provider).filter(Boolean);
+    return [...new Set(providers)].sort();
+  }, [receipts]);
 
-  // Memoizamos los tickets visibles
+  // Función para filtrar por mes
+  const filterByMonth = (receipt: Receipt, month: string) => {
+    const receiptDate = new Date(receipt.date);
+    const [year, monthNum] = month.split('-');
+    return receiptDate.getFullYear() === parseInt(year) && 
+           receiptDate.getMonth() === parseInt(monthNum) - 1;
+  };
+
+  // Función para filtrar por trimestre
+  const filterByQuarter = (receipt: Receipt, quarter: string) => {
+    const receiptDate = new Date(receipt.date);
+    const [year, quarterNum] = quarter.split('-Q');
+    const receiptYear = receiptDate.getFullYear();
+    const receiptQuarter = Math.floor(receiptDate.getMonth() / 3) + 1;
+    
+    return receiptYear === parseInt(year) && receiptQuarter === parseInt(quarterNum);
+  };
+
+  // Función para filtrar por rango de fechas
+  const filterByDateRange = (receipt: Receipt, start: string, end: string) => {
+    if (!start && !end) return true;
+    const receiptDate = new Date(receipt.date);
+    const startDate = start ? new Date(start) : null;
+    const endDate = end ? new Date(end) : null;
+    
+    if (startDate && receiptDate < startDate) return false;
+    if (endDate && receiptDate > endDate) return false;
+    return true;
+  };
+
+  // Función para limpiar todos los filtros
+  const clearAllFilters = () => {
+    setSelectedType(null);
+    setSelectedMonth(null);
+    setSelectedQuarter(null);
+    setSelectedProvider(null);
+    setDateRange({start: '', end: ''});
+    setInputValue('');
+  };
+
+  // Contar filtros activos
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (selectedType) count++;
+    if (selectedMonth) count++;
+    if (selectedQuarter) count++;
+    if (selectedProvider) count++;
+    if (dateRange.start || dateRange.end) count++;
+    if (inputValue.trim()) count++;
+    return count;
+  }, [selectedType, selectedMonth, selectedQuarter, selectedProvider, dateRange, inputValue]);
+
   const visibleReceipts = useMemo(() => {
-    return filteredReceipts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  }, [filteredReceipts, page]);
+    const filtered = receipts.filter(receipt => {
+      // Filtro por búsqueda de texto
+      if (inputValue.trim()) {
+        const searchTerm = inputValue.toLowerCase();
+        const matchesSearch = 
+          receipt.provider.toLowerCase().includes(searchTerm) ||
+          receipt.date.includes(searchTerm) ||
+          receipt.tipo_factura?.toLowerCase().includes(searchTerm) ||
+          receipt.notas?.toLowerCase().includes(searchTerm);
+        if (!matchesSearch) return false;
+      }
+
+      // Filtro por tipo
+      if (selectedType && receipt.tipo_factura !== selectedType) {
+        return false;
+      }
+
+      // Filtro por mes
+      if (selectedMonth && !filterByMonth(receipt, selectedMonth)) {
+        return false;
+      }
+
+      // Filtro por trimestre
+      if (selectedQuarter && !filterByQuarter(receipt, selectedQuarter)) {
+        return false;
+      }
+
+      // Filtro por proveedor
+      if (selectedProvider && receipt.provider !== selectedProvider) {
+        return false;
+      }
+
+      // Filtro por rango de fechas
+      if (!filterByDateRange(receipt, dateRange.start, dateRange.end)) {
+        return false;
+      }
+
+      return true;
+    });
+
+    // Aplicar paginación
+    return filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  }, [receipts, inputValue, selectedType, selectedMonth, selectedQuarter, selectedProvider, dateRange, page]);
+
+  // Calcular total de páginas basado en los receipts filtrados
+  const totalFilteredReceipts = useMemo(() => {
+    return receipts.filter(receipt => {
+      // Misma lógica de filtrado pero sin paginación
+      if (inputValue.trim()) {
+        const searchTerm = inputValue.toLowerCase();
+        const matchesSearch = 
+          receipt.provider.toLowerCase().includes(searchTerm) ||
+          receipt.date.includes(searchTerm) ||
+          receipt.tipo_factura?.toLowerCase().includes(searchTerm) ||
+          receipt.notas?.toLowerCase().includes(searchTerm);
+        if (!matchesSearch) return false;
+      }
+
+      if (selectedType && receipt.tipo_factura !== selectedType) return false;
+      if (selectedMonth && !filterByMonth(receipt, selectedMonth)) return false;
+      if (selectedQuarter && !filterByQuarter(receipt, selectedQuarter)) return false;
+      if (selectedProvider && receipt.provider !== selectedProvider) return false;
+      if (!filterByDateRange(receipt, dateRange.start, dateRange.end)) return false;
+
+      return true;
+    }).length;
+  }, [receipts, inputValue, selectedType, selectedMonth, selectedQuarter, selectedProvider, dateRange]);
+
+  const totalPages = Math.max(1, Math.ceil(totalFilteredReceipts / PAGE_SIZE));
 
   // Manejar atajos de teclado
   useEffect(() => {
@@ -596,6 +741,63 @@ export default function RecibosPage() {
     }
   }, []);
 
+  const handleAIAnalysis = useCallback(async (receiptId: string) => {
+    setIsAnalyzing(prev => [...prev, receiptId]);
+    try {
+      const response = await fetch('/api/ai-analysis', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ receiptId }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Error en el análisis de IA');
+      }
+
+      const result = await response.json();
+      
+      // Actualizar el receipt con el análisis
+      await loadReceipts();
+    } catch (error) {
+      console.error('Error in AI analysis:', error);
+      setError('Error al analizar con IA. Por favor, intenta de nuevo.');
+    } finally {
+      setIsAnalyzing(prev => prev.filter(id => id !== receiptId));
+    }
+  }, [loadReceipts]);
+
+  const handleBulkAIAnalysis = useCallback(async () => {
+    if (selectedReceipts.length === 0) return;
+    
+    setIsBulkAnalyzing(true);
+    try {
+      const response = await fetch('/api/ai-analysis/bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ receiptIds: selectedReceipts }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Error en el análisis masivo de IA');
+      }
+
+      const result = await response.json();
+      
+      // Actualizar los receipts con los análisis
+      await loadReceipts();
+      setSelectedReceipts([]);
+    } catch (error) {
+      console.error('Error in bulk AI analysis:', error);
+      setError('Error al analizar con IA. Por favor, intenta de nuevo.');
+    } finally {
+      setIsBulkAnalyzing(false);
+    }
+  }, [selectedReceipts, loadReceipts]);
+
   return (
     <div className="bg-white p-6 rounded-3xl flex flex-col animate-fade-in border">
         <div className="flex flex-col gap-6 p-8">
@@ -603,15 +805,31 @@ export default function RecibosPage() {
             <h1 className="text-2xl font-semibold tracking-tight text-neutral-800">Tickets</h1>
             <div className="flex items-center gap-3">
                 {selectedReceipts.length > 0 && (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={confirmDelete}
-                    className="flex items-center gap-2"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Eliminar ({selectedReceipts.length})
-                  </Button>
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleBulkAIAnalysis}
+                      disabled={isBulkAnalyzing}
+                      className="flex items-center gap-2"
+                    >
+                      {isBulkAnalyzing ? (
+                        <div className="w-4 h-4 border border-neutral-400 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Sparkles className="w-4 h-4" />
+                      )}
+                      Analizar con IA ({selectedReceipts.length})
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={confirmDelete}
+                      className="flex items-center gap-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Eliminar ({selectedReceipts.length})
+                    </Button>
+                  </>
                 )}
                 <Button
                     onClick={loadReceipts}
@@ -681,6 +899,123 @@ export default function RecibosPage() {
             ))}
         </div>
 
+        {/* Filtros Avanzados */}
+        <div className="border rounded-lg p-4 mb-4 bg-neutral-50/50">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-neutral-600" />
+              <span className="text-sm font-medium text-neutral-700">Filtros Avanzados</span>
+              {activeFiltersCount > 0 && (
+                <Badge variant="secondary" className="text-xs">
+                  {activeFiltersCount} activo{activeFiltersCount !== 1 ? 's' : ''}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {activeFiltersCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearAllFilters}
+                  className="text-xs h-7 px-2"
+                >
+                  Limpiar filtros
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                className="text-xs h-7 px-2"
+              >
+                {showAdvancedFilters ? 'Ocultar' : 'Mostrar'}
+              </Button>
+            </div>
+          </div>
+
+          {showAdvancedFilters && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Filtro por Mes */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-neutral-600">Mes</label>
+                <Select value={selectedMonth || ''} onValueChange={(value) => setSelectedMonth(value || null)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Seleccionar mes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Todos los meses</SelectItem>
+                    {Array.from({length: 12}, (_, i) => {
+                      const date = new Date(2024, i, 1);
+                      const value = `2024-${String(i + 1).padStart(2, '0')}`;
+                      return (
+                        <SelectItem key={value} value={value}>
+                          {format(date, 'MMMM yyyy', { locale: es })}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filtro por Trimestre */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-neutral-600">Trimestre</label>
+                <Select value={selectedQuarter || ''} onValueChange={(value) => setSelectedQuarter(value || null)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Seleccionar trimestre" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Todos los trimestres</SelectItem>
+                    <SelectItem value="2024-Q1">Q1 2024 (Ene-Mar)</SelectItem>
+                    <SelectItem value="2024-Q2">Q2 2024 (Abr-Jun)</SelectItem>
+                    <SelectItem value="2024-Q3">Q3 2024 (Jul-Sep)</SelectItem>
+                    <SelectItem value="2024-Q4">Q4 2024 (Oct-Dic)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filtro por Proveedor */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-neutral-600">Proveedor</label>
+                <Select value={selectedProvider || ''} onValueChange={(value) => setSelectedProvider(value || null)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder="Seleccionar proveedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Todos los proveedores</SelectItem>
+                    {uniqueProviders.map(provider => (
+                      <SelectItem key={provider} value={provider}>
+                        {provider}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filtro por Rango de Fechas */}
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-neutral-600">Rango de fechas</label>
+                <div className="flex gap-1">
+                  <Input
+                    type="date"
+                    value={dateRange.start}
+                    onChange={(e) => setDateRange(prev => ({...prev, start: e.target.value}))}
+                    className="h-8 text-xs"
+                    placeholder="Desde"
+                  />
+                  <Input
+                    type="date"
+                    value={dateRange.end}
+                    onChange={(e) => setDateRange(prev => ({...prev, end: e.target.value}))}
+                    className="h-8 text-xs"
+                    placeholder="Hasta"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         <Card>
             {loadingData ? (
               <ReceiptsTableSkeleton />
@@ -711,6 +1046,7 @@ export default function RecibosPage() {
                         Total {getSortIcon("total")}
                       </button>
                     </TableHead>
+                    <TableHead className="w-48 h-12">Categoría</TableHead>
                     <TableHead className="w-48 h-12">Notas</TableHead>
                     <TableHead className="w-10 h-12" />
                   </TableRow>
@@ -741,6 +1077,16 @@ export default function RecibosPage() {
                             <IntegrationStatusBadge receipt={receipt} />
                           </TableCell>
                           <TableCell className="whitespace-nowrap">{formatCurrency(receipt.total)}</TableCell>
+                          <TableCell className="max-w-48">
+                            <div className="flex items-center gap-2">
+                              {(receipt.metadatos?.categoria_negocio || receipt.metadatos?.ai_analysis?.business_category) && (
+                                <Badge variant="outline" className="flex items-center gap-1 text-xs">
+                                  <Brain className="w-3 h-3" />
+                                  {receipt.metadatos?.categoria_negocio || receipt.metadatos?.ai_analysis?.business_category}
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell className="max-w-48">
                             <div className="truncate text-sm text-gray-600">
                               {receipt.notas || '-'}
@@ -788,7 +1134,7 @@ export default function RecibosPage() {
                     ))
                   ) : (
                     <TableRow>
-                        <TableCell colSpan={8} className="text-center py-12">
+                        <TableCell colSpan={9} className="text-center py-12">
                           <div className="flex flex-col items-center justify-center space-y-4">
                             {/* Imagen SVG */}
                             <div className={`mx-auto mb-4 ${search || selectedType ? "w-64 h-64 -mt-10 -mb-10" : "w-48 h-48"}`}>
@@ -887,4 +1233,4 @@ export default function RecibosPage() {
         </Dialog>
     </div>
   );
-} 
+}

@@ -40,8 +40,22 @@ export default function LoginPage() {
 
   const handleOAuth = async (provider: 'google' | 'github' | 'apple') => {
     setLoading(true);
-    const { error } = await supabase.auth.signInWithOAuth({ provider });
+    
+    // Obtener la URL base correcta
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || window.location.origin;
+    const redirectTo = `${baseUrl}/auth/callback`;
+    
+    console.log('🔗 OAuth redirect URL:', redirectTo);
+    
+    const { error } = await supabase.auth.signInWithOAuth({ 
+      provider,
+      options: {
+        redirectTo: redirectTo
+      }
+    });
+    
     if (error) {
+      console.error('❌ OAuth error:', error);
       setError(error.message);
       setLoading(false);
     }
@@ -307,4 +321,4 @@ export default function LoginPage() {
       </main>
     </div>
   );
-} 
+}
