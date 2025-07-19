@@ -1,7 +1,7 @@
 import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 // Para desarrollo, usar puppeteer completo con Chromium incluido
-let puppeteerDev;
+let puppeteerDev: any = null;
 try {
   puppeteerDev = process.env.NODE_ENV === 'development' ? require('puppeteer') : null;
 } catch (error) {
@@ -138,65 +138,70 @@ async function generatePdfFromHtml(html: string, templateData?: any): Promise<Bu
       // En desarrollo, usar puppeteer completo con Chromium incluido
       if (isDev && puppeteerDev) {
         console.log('🔄 [PDF_GENERATOR] Usando puppeteer completo para desarrollo...');
-        // Usar puppeteerDev que tiene Chromium incluido, sin especificar executablePath
-        browser = await puppeteerDev.launch({
+        
+        // Configuración optimizada para desarrollo
+        const devOptions = {
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage'
+            '--disable-dev-shm-usage',
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor'
           ],
           defaultViewport: { width: 1920, height: 1080 },
-          headless: true
-        });
+          headless: true,
+          timeout: 30000
+        };
+        
+        browser = await puppeteerDev.launch(devOptions);
+        console.log('🔄 [PDF_GENERATOR] Puppeteer lanzado exitosamente en desarrollo');
       } else {
+        // Producción: usar puppeteer-core con Chromium de Sparticuz
+        console.log('🔄 [PDF_GENERATOR] Usando puppeteer-core para producción...');
         browser = await puppeteer.launch(launchOptions);
       }
     } catch (error) {
       console.log('🔄 [PDF_GENERATOR] Error al lanzar Puppeteer:', error);
       
-      // Si estamos en desarrollo y tenemos puppeteerDev disponible
-      if (isDev && puppeteerDev) {
-        console.log('🔄 [PDF_GENERATOR] Intentando configuración alternativa para desarrollo...');
-        try {
-          // Configuración simplificada para desarrollo
-          const simpleOptions = {
-            args: [
-              '--no-sandbox',
-              '--disable-setuid-sandbox',
-              '--disable-dev-shm-usage'
-            ],
-            defaultViewport: { width: 1920, height: 1080 },
+      // Fallback: intentar con configuración alternativa
+      try {
+        console.log('🔄 [PDF_GENERATOR] Intentando configuración de fallback...');
+        
+        if (isDev && puppeteerDev) {
+          // Configuración mínima para desarrollo
+          const fallbackOptions = {
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
             headless: true,
-            // No especificar executablePath para usar el Chromium incluido
+            timeout: 60000
           };
-          
-          // Usar directamente puppeteerDev que incluye Chromium
-          browser = await puppeteerDev.launch(simpleOptions);
-          console.log('🔄 [PDF_GENERATOR] Configuración alternativa exitosa');
-        } catch (secondError) {
-          console.log('🔄 [PDF_GENERATOR] Configuración alternativa también falló:', secondError);
-          
-          // Usar el generador de PDF de fallback si tenemos datos de plantilla
-          if (templateData) {
-            console.log('🔄 [PDF_GENERATOR] Generando PDF de fallback con datos de plantilla...');
-            return await generateFallbackPdf(templateData);
-          } else {
-            // Crear un PDF de fallback simple si no hay datos de plantilla
-            console.log('🔄 [PDF_GENERATOR] Generando PDF de fallback simple...');
-            return Buffer.from(
-              `<html><body><h1>PDF de Fallback</h1><p>No se pudo generar el PDF completo debido a problemas con Puppeteer.</p><p>${new Date().toISOString()}</p></body></html>`,
-              'utf-8'
-            );
-          }
+          browser = await puppeteerDev.launch(fallbackOptions);
+        } else {
+          // Configuración mínima para producción
+          const fallbackOptions = {
+            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+            executablePath: await chromium.executablePath(),
+            headless: true,
+            timeout: 60000
+          };
+          browser = await puppeteer.launch(fallbackOptions);
         }
-      } else {
-        // En producción, intentar usar el fallback si hay datos de plantilla
+        
+        console.log('🔄 [PDF_GENERATOR] Configuración de fallback exitosa');
+      } catch (fallbackError) {
+        console.log('🔄 [PDF_GENERATOR] Configuración de fallback también falló:', fallbackError);
+        
+        // Usar el generador de PDF de fallback si tenemos datos de plantilla
         if (templateData) {
-          console.log('🔄 [PDF_GENERATOR] Generando PDF de fallback en producción...');
+          console.log('🔄 [PDF_GENERATOR] Generando PDF de fallback con datos de plantilla...');
           return await generateFallbackPdf(templateData);
+        } else {
+          // Crear un PDF de fallback simple si no hay datos de plantilla
+          console.log('🔄 [PDF_GENERATOR] Generando PDF de fallback simple...');
+          return Buffer.from(
+            `<html><body><h1>PDF de Fallback</h1><p>No se pudo generar el PDF completo debido a problemas con Puppeteer.</p><p>${new Date().toISOString()}</p></body></html>`,
+            'utf-8'
+          );
         }
-        // Si no hay datos de plantilla, propagar el error
-        throw error;
       }
     }
     
@@ -373,7 +378,7 @@ async function generateFallbackPdf(templateData: any): Promise<Buffer> {
 }
 
 // Función principal para generar PDF (reemplaza a generatePdfWithApiTemplate)
-export async function generatePdfWithPuppeteer(mindeeData: any, userId?: string): Promise<{
+export async function generatePdfWithPuppeteer(mindeeData: any, userId?: string, receiptImageUrl?: string): Promise<{
   success: boolean;
   data?: any;
   error?: string;
@@ -467,14 +472,17 @@ export async function generatePdfWithPuppeteer(mindeeData: any, userId?: string)
       invoice_number: mindeeData.numero_factura || mindeeData.invoice_number || null,
       document_type: mindeeData.document_type || null,
       
-      // Categoría del negocio (análisis IA)
-      categoria: mindeeData.categoria_negocio || null,
+      // Cuenta contable (análisis IA)
+      cuenta_contable: mindeeData.categoria_negocio || null,
       
       // Items procesados
       line_items: processedLineItems,
       
       // Información de pago
-      payment_method: extractPaymentMethod(mindeeData.payment_details || [])
+      payment_method: extractPaymentMethod(mindeeData.payment_details || []),
+      
+      // Imagen del recibo original
+      receipt_image_url: receiptImageUrl || null
     };
 
     console.log(`${LOG_PREFIX} Datos del template preparados`);

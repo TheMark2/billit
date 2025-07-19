@@ -3,47 +3,11 @@ import { getSupabaseService } from '@/lib/supabaseClient';
 import { checkUserSubscription } from '@/utils/supabaseClient';
 import { processWithMindee } from '@/app/api/upload-receipt/route';
 import { uploadOriginalImage } from '@/lib/supabase-storage';
-
-interface WhatsAppMessage {
-  From: string;
-  To: string;
-  Body?: string;
-  MediaUrl0?: string;
-  MediaContentType0?: string;
-  NumMedia: string;
-}
-
-interface WhatsAppBusinessWebhook {
-  object: string;
-  entry: Array<{
-    id: string;
-    changes: Array<{
-      value: {
-        messaging_product: string;
-        metadata: {
-          display_phone_number: string;
-          phone_number_id: string;
-        };
-        messages?: Array<{
-          from: string;
-          id: string;
-          timestamp: string;
-          text?: { body: string };
-          image?: {
-            mime_type: string;
-            sha256: string;
-            id: string;
-          };
-          type: string;
-        }>;
-      };
-    }>;
-  }>;
-}
+import { createWhatsAppBusinessAPI, cleanPhoneNumberForWhatsApp, type WhatsAppWebhookPayload } from '@/lib/whatsapp-business';
 
 // Función para limpiar número de teléfono
-function cleanPhoneNumber(phone: string): string {
-  return phone.replace('whatsapp:', '').replace('+', '');
+function cleanPhoneNumber(phoneNumber: string): string {
+  return cleanPhoneNumberForWhatsApp(phoneNumber);
 }
 
 // Función para obtener perfil del usuario
@@ -220,80 +184,31 @@ function generateIntegrationsMenu(integrations: any[], phoneNumber: string) {
   };
 }
 
-// Función para enviar mensaje de WhatsApp
+// Función para enviar mensaje de WhatsApp usando WhatsApp Business API
 async function sendWhatsAppMessage(phoneNumber: string, message: string) {
-  const isTwilio = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN;
-  const isWhatsAppBusiness = process.env.WHATSAPP_BUSINESS_TOKEN;
-
-  if (isTwilio) {
-    // Usar Twilio (para testing)
-    const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': `Basic ${Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString('base64')}`
-        },
-        body: new URLSearchParams({
-          From: process.env.TWILIO_WHATSAPP_NUMBER!,
-          To: `whatsapp:+${phoneNumber}`,
-          Body: message
-        })
-      }
-    );
-    return response.json();
-  } else if (isWhatsAppBusiness) {
-    // Usar WhatsApp Business API (para producción)
-    const response = await fetch(
-      `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_BUSINESS_PHONE_NUMBER_ID}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.WHATSAPP_BUSINESS_TOKEN}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to: phoneNumber,
-          type: 'text',
-          text: {
-            body: message
-          }
-        })
-      }
-    );
-    return response.json();
+  try {
+    const whatsappAPI = createWhatsAppBusinessAPI();
+    const result = await whatsappAPI.sendMessage(phoneNumber, message);
+    return result;
+  } catch (error) {
+    console.error('❌ Error enviando mensaje WhatsApp Business:', error);
+    throw error;
   }
-
-  throw new Error('No WhatsApp service configured');
 }
 
-// Función para descargar archivo multimedia
-async function downloadMedia(mediaUrl: string): Promise<Buffer> {
-  console.log('⬇️ Descargando archivo multimedia desde:', mediaUrl);
+// Función para descargar archivo multimedia usando WhatsApp Business API
+async function downloadMedia(mediaId: string): Promise<Buffer> {
+  console.log('⬇️ Descargando archivo multimedia desde WhatsApp Business:', mediaId);
   
-  // Usar autenticación básica para Twilio
-  const authString = Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString('base64');
-  
-  const response = await fetch(mediaUrl, {
-    headers: {
-      'Authorization': `Basic ${authString}`
-    }
-  });
-  
-  console.log('📥 Respuesta de descarga:', response.status, response.statusText);
-  
-  if (!response.ok) {
-    console.log('❌ Error descargando archivo:', response.status, response.statusText);
-    throw new Error(`Failed to download media: ${response.statusText}`);
+  try {
+    const whatsappAPI = createWhatsAppBusinessAPI();
+    const buffer = await whatsappAPI.downloadMedia(mediaId);
+    console.log('✅ Archivo descargado exitosamente desde WhatsApp Business, tamaño:', buffer.length, 'bytes');
+    return buffer;
+  } catch (error) {
+    console.error('❌ Error descargando archivo desde WhatsApp Business:', error);
+    throw error;
   }
-  
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  console.log('✅ Archivo descargado exitosamente, tamaño:', buffer.length, 'bytes');
-  
-  return buffer;
 }
 
 // Función para procesar recibo (simplificada, reutiliza lógica de upload-receipt)
@@ -767,167 +682,125 @@ export async function GET(request: NextRequest) {
   const challenge = searchParams.get('hub.challenge');
 
   if (mode === 'subscribe' && token === process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
+    console.log('✅ Webhook de WhatsApp Business verificado');
     return new NextResponse(challenge, { status: 200 });
+  } else {
+    console.log('❌ Verificación de webhook fallida');
+    return new NextResponse('Unauthorized', { status: 403 });
   }
-
-  return new NextResponse('Forbidden', { status: 403 });
 }
 
 export async function POST(request: NextRequest) {
+  console.log('📨 Webhook WhatsApp Business recibido');
+  
   try {
-    const contentType = request.headers.get('content-type');
+    const body: WhatsAppWebhookPayload = await request.json();
+    console.log('📝 Payload WhatsApp Business:', JSON.stringify(body, null, 2));
     
-    if (contentType?.includes('application/json')) {
-      // WhatsApp Business API
-      const body: WhatsAppBusinessWebhook = await request.json();
-      
-      if (body.object === 'whatsapp_business_account') {
-        for (const entry of body.entry) {
-          for (const change of entry.changes) {
-            if (change.value.messages) {
-              for (const message of change.value.messages) {
-                const phoneNumber = message.from;
+    // Verificar que es un webhook de WhatsApp
+    if (body.object !== 'whatsapp_business_account') {
+      console.log('⚠️ No es un webhook de WhatsApp Business');
+      return NextResponse.json({ status: 'success' });
+    }
+    
+    // Procesar cada entrada
+    for (const entry of body.entry) {
+      for (const change of entry.changes) {
+        if (change.field === 'messages') {
+          const value = change.value;
+          
+          // Procesar mensajes entrantes
+          if (value.messages) {
+            for (const message of value.messages) {
+              const phoneNumber = cleanPhoneNumber(message.from);
+              console.log('📱 Número de teléfono procesado:', phoneNumber);
+              
+              if (message.type === 'text' && message.text) {
+                console.log('💬 Procesando mensaje de texto:', message.text.body);
+                await handleTextCommand(phoneNumber, message.text.body);
+              } else if (message.type === 'image' && message.image) {
+                console.log('🖼️ Procesando imagen de:', phoneNumber);
                 
-                if (message.type === 'text' && message.text) {
-                  await handleTextCommand(phoneNumber, message.text.body);
-                } else if (message.type === 'image' && message.image) {
-                  console.log('🖼️ Procesando imagen de:', phoneNumber);
+                try {
+                  // Verificar usuario
+                  console.log('🔍 Verificando usuario...');
+                  const userStatus = await checkUserSubscription(phoneNumber);
                   
-                  try {
-                    // Verificar usuario
-                    console.log('🔍 Verificando usuario...');
-                    const userStatus = await checkUserSubscription(phoneNumber);
-                    
-                    if (!userStatus.isSubscribed || !userStatus.quotaAvailable) {
-                      console.log('❌ Usuario sin suscripción o cuota');
-                      await sendWhatsAppMessage(phoneNumber, 
-                        `❌ *Suscripción inactiva o sin cuota*\n\nVe a tu dashboard para activar tu plan.`
-                      );
-                      continue;
-                    }
-                    
-                    console.log('✅ Usuario verificado, procesando imagen...');
-                    
-                    // Obtener URL del archivo
-                    console.log('📥 Obteniendo URL del archivo con ID:', message.image.id);
-                    const mediaResponse = await fetch(
-                      `https://graph.facebook.com/v18.0/${message.image.id}`,
-                      {
-                        headers: {
-                          'Authorization': `Bearer ${process.env.WHATSAPP_BUSINESS_TOKEN}`
-                        }
-                      }
-                    );
-                    
-                    const mediaData = await mediaResponse.json();
-                    console.log('🔗 Respuesta de Facebook API:', mediaData);
-                    
-                    if (!mediaData.url) {
-                      console.log('❌ No se encontró URL del archivo');
-                      throw new Error('No media URL found');
-                    }
-                    
-                    console.log('⬇️ Descargando archivo desde:', mediaData.url);
-                    const mediaBuffer = await downloadMedia(mediaData.url);
-                    console.log('✅ Archivo descargado, tamaño:', mediaBuffer.length, 'bytes');
-                    
-                    // Procesar recibo
-                    console.log('🔄 Procesando recibo...');
-                    const result = await processReceipt(phoneNumber, mediaBuffer, message.image.mime_type);
-                    console.log('📊 Resultado del procesamiento:', result);
-                    
-                    console.log('✅ Recibo procesado exitosamente');
-                    
-                    // Obtener integraciones y enviar menú
-                    console.log('🔍 Obteniendo integraciones...');
-                    const integrations = await getUserIntegrations(phoneNumber);
-                    console.log('🔗 Integraciones encontradas:', integrations.length);
-                    
-                    console.log('📋 Generando menú...');
-                    const menu = generateIntegrationsMenu(integrations, phoneNumber);
-                    console.log('📤 Enviando menú al usuario...');
-                    
-                    await sendWhatsAppMessage(phoneNumber, menu.message);
-                    console.log('✅ Menú enviado correctamente');
-                  } catch (error) {
-                    console.error('❌ Error completo en procesamiento de imagen:', error);
+                  if (!userStatus.isSubscribed || !userStatus.quotaAvailable) {
+                    console.log('❌ Usuario sin suscripción o cuota');
                     await sendWhatsAppMessage(phoneNumber, 
-                      `❌ *Error al procesar factura*\n\nHubo un problema procesando tu factura. Inténtalo nuevamente.`
+                      `❌ *Suscripción inactiva o sin cuota*\n\nVe a tu dashboard para activar tu plan.`
                     );
+                    continue;
                   }
+                  
+                  console.log('⬇️ Descargando imagen desde WhatsApp Business...');
+                  const mediaBuffer = await downloadMedia(message.image.id);
+                  
+                  console.log('🧠 Procesando recibo con IA...');
+                  const result = await processReceipt(phoneNumber, mediaBuffer, 'image/jpeg');
+                  
+                  console.log('✅ Recibo procesado exitosamente');
+                  
+                  // Obtener integraciones del usuario
+                  const integrations = await getUserIntegrations(phoneNumber);
+                  const menu = generateIntegrationsMenu(integrations, phoneNumber);
+                  
+                  await sendWhatsAppMessage(phoneNumber, menu.message);
+                } catch (error) {
+                  console.error('❌ Error procesando imagen:', error);
+                  await sendWhatsAppMessage(phoneNumber, 
+                    `❌ *Error procesando imagen*\n\nInténtalo de nuevo más tarde.`
+                  );
                 }
+              } else if (message.type === 'document' && message.document) {
+                console.log('📄 Procesando documento de:', phoneNumber);
+                
+                try {
+                  // Verificar usuario
+                  const userStatus = await checkUserSubscription(phoneNumber);
+                  
+                  if (!userStatus.isSubscribed || !userStatus.quotaAvailable) {
+                    await sendWhatsAppMessage(phoneNumber, 
+                      `❌ *Suscripción inactiva o sin cuota*\n\nVe a tu dashboard para activar tu plan.`
+                    );
+                    continue;
+                  }
+                  
+                  console.log('⬇️ Descargando documento desde WhatsApp Business...');
+                  const mediaBuffer = await downloadMedia(message.document.id);
+                  
+                  console.log('🧠 Procesando documento con IA...');
+                  const result = await processReceipt(phoneNumber, mediaBuffer, 'application/pdf');
+                  
+                  console.log('✅ Documento procesado exitosamente');
+                  
+                  // Obtener integraciones del usuario
+                  const integrations = await getUserIntegrations(phoneNumber);
+                  const menu = generateIntegrationsMenu(integrations, phoneNumber);
+                  
+                  await sendWhatsAppMessage(phoneNumber, menu.message);
+                } catch (error) {
+                  console.error('❌ Error procesando documento:', error);
+                  await sendWhatsAppMessage(phoneNumber, 
+                    `❌ *Error procesando documento*\n\nInténtalo de nuevo más tarde.`
+                  );
+                }
+              } else {
+                console.log('⚠️ Tipo de mensaje no soportado:', message.type);
+                await sendWhatsAppMessage(phoneNumber, 
+                  `⚠️ *Tipo de mensaje no soportado*\n\nPor favor, envía una imagen o documento PDF de tu recibo.`
+                );
               }
             }
           }
         }
       }
-    } else {
-      // Twilio webhook (para testing)
-      const formData = await request.formData();
-      const message: WhatsAppMessage = {
-        From: formData.get('From') as string,
-        To: formData.get('To') as string,
-        Body: formData.get('Body') as string || '',
-        MediaUrl0: formData.get('MediaUrl0') as string || '',
-        MediaContentType0: formData.get('MediaContentType0') as string || '',
-        NumMedia: formData.get('NumMedia') as string || '0'
-      };
-      
-      const phoneNumber = cleanPhoneNumber(message.From);
-      const hasMedia = parseInt(message.NumMedia) > 0;
-      
-      if (hasMedia && message.MediaUrl0) {
-        // Verificar usuario
-        const userStatus = await checkUserSubscription(phoneNumber);
-        
-        if (!userStatus.isSubscribed || !userStatus.quotaAvailable) {
-          await sendWhatsAppMessage(phoneNumber, 
-            `❌ *Suscripción inactiva o sin cuota*\n\nVe a tu dashboard para activar tu plan.`
-          );
-          return NextResponse.json({ status: 'error', message: 'User not authorized' });
-        }
-        
-        // Verificar que el archivo multimedia existe
-        if (!message.MediaUrl0 || !message.MediaContentType0) {
-          await sendWhatsAppMessage(phoneNumber, 
-            `❌ *Error al procesar archivo*\n\nNo se pudo obtener la información del archivo multimedia.`
-          );
-          return NextResponse.json({ status: 'error', message: 'No media URL or content type' });
-        }
-        
-        // Descargar archivo
-        const mediaBuffer = await downloadMedia(message.MediaUrl0);
-        
-        // Procesar recibo
-        try {
-          const result = await processReceipt(phoneNumber, mediaBuffer, message.MediaContentType0);
-          
-          if (result.success) {
-            // Obtener integraciones y enviar menú
-            const integrations = await getUserIntegrations(phoneNumber);
-            const menu = generateIntegrationsMenu(integrations, phoneNumber);
-            await sendWhatsAppMessage(phoneNumber, menu.message);
-          } else {
-            await sendWhatsAppMessage(phoneNumber, 
-              `❌ *Error al procesar factura*\n\nHubo un problema procesando tu factura. Inténtalo nuevamente.`
-            );
-          }
-        } catch (error) {
-          await sendWhatsAppMessage(phoneNumber, 
-            `❌ *Error al procesar factura*\n\nHubo un problema procesando tu factura. Inténtalo nuevamente.`
-          );
-        }
-      } else if (message.Body) {
-        // Manejar comando de texto
-        await handleTextCommand(message.From, message.Body);
-      }
     }
     
     return NextResponse.json({ status: 'success' });
   } catch (error) {
-    return NextResponse.json({ 
-      status: 'error', 
-      message: 'Internal server error' 
-    }, { status: 500 });
+    console.error('❌ Error procesando webhook WhatsApp Business:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-} 
+}

@@ -49,7 +49,9 @@ export function Notifications({ onToggle }: NotificationsProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchNotifications();
+    // Temporalmente deshabilitado hasta que se cree la tabla notifications
+    // fetchNotifications();
+    setLoading(false);
   }, []);
 
   const fetchNotifications = async () => {
@@ -62,25 +64,29 @@ export function Notifications({ onToggle }: NotificationsProps) {
     }
 
     try {
-      // Obtener notificaciones reales de la base de datos
-      const { data: notifications, error } = await supabase
-        .from("notifications")
-        .select("*")
-        .eq("user_id", uid)
-        .order("created_at", { ascending: false })
-        .limit(20);
+    // Obtener notificaciones reales de la base de datos
+    const { data: notifications, error } = await supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", uid)
+      .order("created_at", { ascending: false })
+      .limit(20);
 
-      if (error) {
-        console.error('Error fetching notifications:', error);
-        return;
-      }
+    if (error) {
+      console.error('Error fetching notifications:', error);
+      setNotifications([]);
+      setHasUnread(false);
+      return;
+    }
 
-      if (notifications) {
-        setNotifications(notifications);
-        setHasUnread(notifications.some(n => !n.is_read));
-      }
+    if (notifications) {
+      setNotifications(notifications);
+      setHasUnread(notifications.some(n => !n.is_read));
+    }
     } catch (error) {
       console.error('Error fetching notifications:', error);
+      setNotifications([]);
+      setHasUnread(false);
     } finally {
       setLoading(false);
     }

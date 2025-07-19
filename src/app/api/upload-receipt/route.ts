@@ -16,17 +16,8 @@ async function performAutoAIAnalysis(receiptId: string, userId: string) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('auto_ai_analysis')
-      .eq('id', userId)
-      .single();
-
-    // Si el usuario tiene deshabilitado el análisis automático, no hacer nada
-    if (profile?.auto_ai_analysis === false) {
-      console.log('Auto AI analysis disabled for user:', userId);
-      return;
-    }
+    // Auto AI analysis is enabled by default for all users
+    console.log('✅ Auto AI analysis enabled for user');
 
     // Llamar a la API de análisis de IA
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -84,11 +75,28 @@ async function processWithProgress(file: File, userId: string, controller: Reada
       stage: 'image_storage'
     })));
 
+    console.log('📸 [UPLOAD] Iniciando subida de imagen original:', {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      userId,
+      tempReceiptId
+    });
+
     const imageUploadResult = await uploadOriginalImage(file, userId, tempReceiptId, file.name);
     
+    console.log('📸 [UPLOAD] Resultado de subida de imagen:', {
+      success: imageUploadResult.success,
+      path: imageUploadResult.path,
+      publicUrl: imageUploadResult.publicUrl,
+      error: imageUploadResult.error
+    });
+    
     if (!imageUploadResult.success) {
-      console.warn('Warning: Could not save original image:', imageUploadResult.error);
+      console.warn('⚠️ [UPLOAD] Warning: Could not save original image:', imageUploadResult.error);
       // Continuar el procesamiento aunque falle el guardado de imagen
+    } else {
+      console.log('✅ [UPLOAD] Imagen original guardada exitosamente en:', imageUploadResult.path);
     }
 
     // Paso 3: Obtener credenciales y procesar con Mindee (35%)
@@ -221,7 +229,8 @@ async function processWithProgress(file: File, userId: string, controller: Reada
       holdedResult,
       estadoFinal,
       integrationStatus,
-      originalImagePath: imageUploadResult.success ? imageUploadResult.path : null
+      originalImagePath: imageUploadResult.success ? imageUploadResult.path : null,
+      originalImageUrl: imageUploadResult.success ? imageUploadResult.publicUrl : null
     };
 
   } catch (error) {
@@ -304,41 +313,60 @@ export async function POST(request: NextRequest) {
             }
 
             // Guardar en base de datos
+            console.log('📊 [UPLOAD-STREAMING] Datos de imagen para insertar:', {
+              originalImagePath: result.originalImagePath,
+              originalImageUrl: result.originalImageUrl,
+              imageUploadSuccess: result.originalImagePath ? 'YES' : 'NO'
+            });
+            
+            const receiptDataToInsert = {
+              user_id: user.id,
+              fecha_emision: result.mindeeResult.data.date || new Date().toISOString().split('T')[0],
+              fecha_subida: new Date().toISOString().split('T')[0],
+              proveedor: result.mindeeResult.data.supplier_name || 'Proveedor no identificado',
+              numero_factura: result.mindeeResult.data.invoice_number || null,
+              total: result.mindeeResult.data.total_amount || 0,
+              moneda: result.mindeeResult.data.currency || 'EUR',
+              estado: result.estadoFinal,
+              url_archivo: file.name,
+              url_imagen: result.originalImageUrl,
+              texto_extraido: JSON.stringify(result.mindeeResult.data),
+              tipo_factura: 'ticket', // Always use 'ticket' for digitized receipts
+              original_image_path: result.originalImagePath,
+              metadatos: {
+                mindee_data: result.mindeeResult.data,
+                pdf_generation: result.pdfResult.success ? (result.pdfResult as any).data : { error: (result.pdfResult as any).error || 'PDF generation failed' },
+                odoo_integration: result.odooResult,
+                holded_integration: result.holdedResult,
+                file_size: file.size,
+                processed_at: new Date().toISOString(),
+                integration_status: result.integrationStatus,
+                integrations_summary: {
+                  odoo: result.allCredentials.odoo ? (result.odooResult?.success ? 'success' : 'failed') : 'not_configured',
+                  holded: result.allCredentials.holded ? (result.holdedResult?.success ? 'success' : 'failed') : 'not_configured',
+                  pdf: result.pdfResult.success ? 'success' : 'failed'
+                }
+              }
+            };
+
+            console.log('💾 [DATABASE] Guardando ticket en base de datos:', {
+              user_id: receiptDataToInsert.user_id,
+              proveedor: receiptDataToInsert.proveedor,
+              total: receiptDataToInsert.total,
+              estado: receiptDataToInsert.estado,
+              url_archivo: receiptDataToInsert.url_archivo,
+              original_image_path: receiptDataToInsert.original_image_path,
+              hasImagePath: !!receiptDataToInsert.original_image_path
+            });
+
             const { data: receiptData, error: dbError } = await supabase
               .from('receipts')
-              .insert({
-                user_id: user.id,
-                fecha_emision: result.mindeeResult.data.date || new Date().toISOString().split('T')[0],
-                fecha_subida: new Date().toISOString().split('T')[0],
-                proveedor: result.mindeeResult.data.supplier_name || 'Proveedor no identificado',
-                numero_factura: result.mindeeResult.data.invoice_number || null,
-                total: result.mindeeResult.data.total_amount || 0,
-                moneda: result.mindeeResult.data.currency || 'EUR',
-                estado: result.estadoFinal,
-                url_archivo: file.name,
-                texto_extraido: JSON.stringify(result.mindeeResult.data),
-                tipo_factura: 'ticket', // Always use 'ticket' for digitized receipts
-                original_image_path: result.originalImagePath,
-                metadatos: {
-                  mindee_data: result.mindeeResult.data,
-                  pdf_generation: result.pdfResult.success ? (result.pdfResult as any).data : { error: (result.pdfResult as any).error || 'PDF generation failed' },
-                  odoo_integration: result.odooResult,
-                  holded_integration: result.holdedResult,
-                  file_size: file.size,
-                  processed_at: new Date().toISOString(),
-                  integration_status: result.integrationStatus,
-                  integrations_summary: {
-                    odoo: result.allCredentials.odoo ? (result.odooResult?.success ? 'success' : 'failed') : 'not_configured',
-                    holded: result.allCredentials.holded ? (result.holdedResult?.success ? 'success' : 'failed') : 'not_configured',
-                    pdf: result.pdfResult.success ? 'success' : 'failed'
-                  }
-                }
-              })
+              .insert(receiptDataToInsert)
               .select()
               .single();
 
             if (dbError) {
-              console.error('Database error details (streaming):', {
+              console.error('❌ [DATABASE] Error guardando ticket:', {
                 message: dbError.message,
                 details: dbError.details,
                 hint: dbError.hint,
@@ -351,6 +379,16 @@ export async function POST(request: NextRequest) {
                 error: `${dbError.message} (Code: ${dbError.code})`
               })));
             } else {
+              console.log('✅ [DATABASE] Ticket guardado exitosamente:', {
+                id: receiptData.id,
+                proveedor: receiptData.proveedor,
+                total: receiptData.total,
+                estado: receiptData.estado,
+                original_image_path: receiptData.original_image_path,
+                url_archivo: receiptData.url_archivo,
+                url_imagen: receiptData.url_imagen,
+                fecha_subida: receiptData.fecha_subida
+              });
               // Análisis automático de IA (95%)
               controller.enqueue(encoder.encode(createSSEEvent({
                 progress: 95,
@@ -532,6 +570,7 @@ export async function POST(request: NextRequest) {
         moneda: mindeeResult.data.currency || 'EUR',
         estado: estadoFinal,
         url_archivo: file.name,
+        url_imagen: imageUploadResult.success ? imageUploadResult.publicUrl : null,
         texto_extraido: JSON.stringify(mindeeResult.data),
         tipo_factura: 'ticket', // Always use 'ticket' for digitized receipts
         original_image_path: imageUploadResult.success ? imageUploadResult.path : null,
@@ -601,6 +640,8 @@ export async function POST(request: NextRequest) {
           });
 
         // Crear notificación de duplicados encontrados
+        // Notifications temporarily disabled
+        /*
         const { createAutoNotification } = await import('@/app/api/notifications/route');
         await createAutoNotification(
           user.id,
@@ -608,52 +649,20 @@ export async function POST(request: NextRequest) {
           '⚠️ Posibles duplicados detectados',
           `Se encontraron ${filteredDuplicates.length} tickets similares. Revisa la tabla de recibos para verificar.`
         );
+        */
       }
     } catch (error) {
       console.warn('Error detecting duplicates:', error);
     }
 
-    // Crear notificación de éxito
-    try {
-      const { createAutoNotification } = await import('@/app/api/notifications/route');
-      const supplierName = mindeeResult.data.supplier_name || 'Proveedor desconocido';
-      const total = mindeeResult.data.total_amount || 0;
-      
-      let notificationTitle = "✅ Ticket procesado";
-      let notificationMessage = `${supplierName} - €${total}`;
-      let notificationType = "success";
-      
-      // Verificar si hubo errores en integraciones
-      const hasIntegrationErrors = (odooResult && !odooResult.success) || (holdedResult && !holdedResult.success);
-      if (hasIntegrationErrors) {
-        notificationTitle = "⚠️ Ticket procesado parcialmente";
-        notificationMessage += " (algunas integraciones fallaron)";
-        notificationType = "warning";
-      }
-      
-      await createAutoNotification(
-        user.id,
-        notificationTitle,
-        notificationMessage,
-        notificationType,
-        `/dashboard/recibos`,
-        {
-          integrations: {
-            odoo: allCredentials.odoo ? (odooResult?.success ? 'success' : 'failed') : 'not_configured',
-            holded: allCredentials.holded ? (holdedResult?.success ? 'success' : 'failed') : 'not_configured',
-            pdf: pdfResult.success ? 'success' : 'failed'
-          }
-        },
-        receiptData.id
-      );
-    } catch (notificationError) {
-      console.error('Error creating notification:', notificationError);
-      // No fallar por error de notificación
-    }
-
+    // Notificaciones temporalmente deshabilitadas
+    console.log('Notificaciones deshabilitadas temporalmente');
+    
     // Ejecutar análisis de IA automáticamente
     try {
-      await performAutoAIAnalysis(receiptData.id, user.id);
+      if (receiptData?.id && user?.id) {
+        await performAutoAIAnalysis(receiptData.id, user.id);
+      }
     } catch (aiError) {
       console.warn('AI analysis failed:', aiError);
       // No fallar el proceso por error de IA
@@ -698,15 +707,18 @@ export async function POST(request: NextRequest) {
         
         const { data: { user: errorUser } } = await errorSupabase.auth.getUser(errorToken);
         if (errorUser) {
-          const { createAutoNotification } = await import('@/app/api/notifications/route');
-          await createAutoNotification(
-            errorUser.id,
-            "❌ Error procesando ticket",
-            "Hubo un problema al procesar tu ticket. Inténtalo de nuevo.",
-            "error",
-            `/dashboard/subir-facturas`,
-            { error: error instanceof Error ? error.message : 'Error desconocido' }
-          );
+          // Notifications temporarily disabled
+        /*
+        const { createAutoNotification } = await import('@/app/api/notifications/route');
+        await createAutoNotification(
+          errorUser.id,
+          "❌ Error procesando ticket",
+          "Hubo un problema al procesar tu ticket. Inténtalo de nuevo.",
+          "error",
+          `/dashboard/subir-facturas`,
+          { error: error instanceof Error ? error.message : 'Error desconocido' }
+        );
+        */
         }
       }
     } catch (notificationError) {

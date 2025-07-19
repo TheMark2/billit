@@ -25,6 +25,7 @@ import { MetricsSkeleton, ReceiptsSkeleton, CompanyInfoSkeleton } from "@/compon
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RecentReceipts } from "@/components/dashboard/RecentReceipts";
 import { IntegrationsWidget } from "@/components/dashboard/IntegrationsWidget";
+import { FinancialSummaryWidget } from "@/components/dashboard/FinancialSummaryWidget";
 import { useRouter } from 'next/navigation';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
@@ -577,6 +578,8 @@ export default function DashboardPage() {
           <Suspense fallback={<PlanStatusSkeleton />}>
             <PlanStatus />
           </Suspense>
+          {/* Widget de resumen financiero */}
+          <FinancialSummaryWidget />
           {/* Widget de integraciones */}
           <IntegrationsWidget />
         </div>

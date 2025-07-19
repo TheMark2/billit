@@ -278,7 +278,7 @@ function SortableLineItem({
         />
       </div>
       <div className="col-span-1 px-3 py-2 border-r border-gray-200">
-        <Select value={item.impuestos.toString()} onValueChange={(value) => onLineItemChange(item.id, 'impuestos', parseInt(value))}>
+        <Select value={(item.impuestos || 0).toString()} onValueChange={(value) => onLineItemChange(item.id, 'impuestos', parseInt(value))}>
           <SelectTrigger className="h-8">
             <SelectValue />
           </SelectTrigger>
@@ -322,7 +322,8 @@ export default function EditReceiptDialog({ receipt, onReceiptUpdated, trigger }
     fecha_emision: receipt.fecha_emision,
     moneda: receipt.moneda,
     tipo_factura: receipt.tipo_factura || 'ticket',
-    notas: receipt.notas || ''
+    notas: receipt.notas || '',
+    metadatos: receipt.metadatos || {}
   });
 
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
@@ -353,7 +354,7 @@ export default function EditReceiptDialog({ receipt, onReceiptUpdated, trigger }
     }
   }, [isOpen, receipt]);
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: string | any) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -588,7 +589,8 @@ export default function EditReceiptDialog({ receipt, onReceiptUpdated, trigger }
       fecha_emision: receipt.fecha_emision,
       moneda: receipt.moneda,
       tipo_factura: receipt.tipo_factura || 'ticket',
-      notas: receipt.notas || ''
+      notas: receipt.notas || '',
+      metadatos: receipt.metadatos || {}
     });
     setIsOpen(false);
   };
@@ -658,7 +660,7 @@ export default function EditReceiptDialog({ receipt, onReceiptUpdated, trigger }
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium block mb-1">Moneda</label>
-                  <Select value={formData.moneda} onValueChange={(value) => handleInputChange('moneda', value)}>
+                  <Select value={formData.moneda || 'EUR'} onValueChange={(value) => handleInputChange('moneda', value)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar moneda" />
                     </SelectTrigger>
@@ -673,7 +675,7 @@ export default function EditReceiptDialog({ receipt, onReceiptUpdated, trigger }
                 </div>
                 <div>
                   <label className="text-sm font-medium block mb-1">Tipo de documento</label>
-                  <Select value={formData.tipo_factura} onValueChange={(value) => handleInputChange('tipo_factura', value)}>
+                  <Select value={formData.tipo_factura || 'receipt'} onValueChange={(value) => handleInputChange('tipo_factura', value)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar tipo" />
                     </SelectTrigger>
@@ -694,6 +696,24 @@ export default function EditReceiptDialog({ receipt, onReceiptUpdated, trigger }
                   value={formData.notas}
                   onChange={(e) => handleInputChange('notas', e.target.value)}
                   placeholder="Añade una nota para recordar de qué es este ticket..."
+                />
+              </div>
+              
+              <div>
+                <label className="text-sm font-medium block mb-1">Categoría Contable</label>
+                <Input
+                  value={formData.metadatos?.ai_analysis?.accounting_account || ''}
+                  onChange={(e) => {
+                    const newMetadatos = {
+                      ...formData.metadatos,
+                      ai_analysis: {
+                        ...formData.metadatos?.ai_analysis,
+                        accounting_account: e.target.value
+                      }
+                    };
+                    handleInputChange('metadatos', newMetadatos);
+                  }}
+                  placeholder="Ej: 629 - Otros servicios"
                 />
               </div>
             </CardContent>

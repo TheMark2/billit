@@ -62,8 +62,9 @@ export async function GET(request: NextRequest) {
         );
       }
       
-      // Generar el PDF
-      const pdfResult = await generatePdfWithPuppeteer(mindeeData, receipt.user_id);
+      // Generar el PDF con la imagen del recibo
+      const receiptImageUrl = receipt.url_imagen || receipt.url_archivo;
+      const pdfResult = await generatePdfWithPuppeteer(mindeeData, receipt.user_id, receiptImageUrl);
       
       if (!pdfResult.success) {
         console.error('Error generando PDF on-demand:', pdfResult.error);

@@ -4,12 +4,21 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import Image from "next/image";
+import WaitlistForm from "@/components/WaitlistForm";
 
 export default function Home() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [success, setSuccess] = useState(false);
+
+  const scrollToWaitlist = () => {
+    const waitlistSection = document.getElementById('waitlist-form');
+    if (waitlistSection) {
+      waitlistSection.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,27 +47,20 @@ export default function Home() {
 
   return (
     <div className="bg-white min-h-screen font-plus-jakarta">
-      {/* Banner promocional */}
-      <div className="bg-emerald-500 py-2 text-white overflow-hidden relative">
-        <div 
-          className="flex whitespace-nowrap"
-          style={{
-            animation: 'marquee 20s linear infinite',
-            willChange: 'transform',
-          }}
-        >
-          <span className="mx-4">🎉 ¡1 mes gratis de prueba! Regístrate ahora y descubre todo el potencial de nuestra plataforma</span>
-          <span className="mx-4">🎉 ¡1 mes gratis de prueba! Regístrate ahora y descubre todo el potencial de nuestra plataforma</span>
-          <span className="mx-4">🎉 ¡1 mes gratis de prueba! Regístrate ahora y descubre todo el potencial de nuestra plataforma</span>
-          <span className="mx-4">🎉 ¡1 mes gratis de prueba! Regístrate ahora y descubre todo el potencial de nuestra plataforma</span>
+      {/* Navbar */}
+      <nav className="sticky top-0 z-50 bg-white border-b border-gray-100 py-3">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <div className="flex justify-center">
+            <Image
+              src="/Logobillit1.svg"
+              alt="Billit Logo"
+              width={80}
+              height={28}
+              className="h-7 w-auto filter grayscale opacity-70"
+            />
+          </div>
         </div>
-        <style jsx>{`
-          @keyframes marquee {
-            0% { transform: translateX(0); }
-            100% { transform: translateX(-100%); }
-          }
-        `}</style>
-      </div>
+      </nav>
 
       <div className="relative isolate px-6 pt-14 lg:px-8 bg-neutral-50">
         <div className="mx-auto max-w-7xl py-4 sm:py-8 lg:py-12">
@@ -87,16 +89,14 @@ export default function Home() {
             <div className="mt-12 flex flex-col sm:flex-row gap-4 justify-center items-center">
               <Button
                 variant="outline"
-                className="px-8 py-3 font-medium"
                 onClick={() => window.location.href = '/login'}
               >
                 Iniciar Sesión
               </Button>
               <Button
-                className="px-8 py-3 font-medium"
-                onClick={() => window.location.href = '/login'}
+                onClick={scrollToWaitlist}
               >
-                Registrate aquí
+                Únete a la lista de espera
               </Button>
             </div>
           </div>
@@ -134,12 +134,11 @@ export default function Home() {
                 fecha, importe, comercio, productos y categorías. Elimina el papeleo y los errores 
                 de transcripción manual. <strong>Ahorra hasta 80% del tiempo</strong> en gestión de gastos.
               </p>
-              <div className="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-400">
-                <p className="text-sm text-blue-800 font-medium">
-                  🎯 <strong>Beneficio clave:</strong> Reduce el tiempo de gestión de gastos de horas a minutos, 
-                  mejorando la productividad y precisión de tu contabilidad.
-                </p>
-              </div>
+              <Button 
+                onClick={scrollToWaitlist}
+              >
+                Únete a la lista de espera
+              </Button>
             </div>
             <div className="order-1 lg:order-2">
               <div className="relative pt-8 pl-8 rounded-2xl overflow-hidden bg-neutral-50">
@@ -157,13 +156,13 @@ export default function Home() {
           {/* Sección 2: WhatsApp */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div>
-              <div className="relative p-8 rounded-2xl overflow-hidden bg-neutral-50">
+              <div className="relative p-8 rounded-2xl overflow-hidden bg-neutral-50 flex items-center justify-center">
                 <div className="absolute w-[300px] h-[300px] rounded-full bg-purple-400/30 blur-3xl -top-24 -left-24"></div>
                 <div className="absolute w-[250px] h-[250px] rounded-full bg-blue-400/20 blur-3xl -bottom-20 -right-20"></div>
                 <img 
-                  src="/mockup-whatsapp.png" 
-                  alt="Digitalización por WhatsApp" 
-                  className="relative z-10 rounded-xl w-full h-auto"
+                  src="/Group 19.png" 
+                  alt="Digitalización por SMS" 
+                  className="relative z-10 rounded-xl w-auto h-120"
                 />
               </div>
             </div>
@@ -172,19 +171,18 @@ export default function Home() {
                 Digitalización Móvil
               </Badge>
               <h2 className="text-4xl font-bold text-neutral-800">
-                Digitaliza tickets desde WhatsApp
+                Digitaliza tickets desde SMS
               </h2>
               <p className="text-lg text-neutral-600 font-normal">
                 Envía una foto de tu ticket por WhatsApp y recibe automáticamente los datos 
                 digitalizados. Sin apps adicionales, sin complicaciones. 
                 <strong>Cumple con la normativa fiscal española</strong> y mantén tus gastos organizados al instante.
               </p>
-              <div className="bg-green-50 p-4 rounded-lg border-l-4 border-green-400">
-                <p className="text-sm text-green-800 font-medium">
-                  📱 <strong>Ventaja única:</strong> Compatible con TicketBAI y normativa fiscal española. 
-                  Genera documentos válidos para Hacienda automáticamente.
-                </p>
-              </div>
+              <Button 
+                onClick={scrollToWaitlist}
+              >
+                Probar con WhatsApp
+              </Button>
             </div>
           </div>
 
@@ -203,12 +201,11 @@ export default function Home() {
                 identifica patrones de consumo y te ayuda a <strong>optimizar tu presupuesto</strong> 
                 con reportes detallados.
               </p>
-              <div className="bg-amber-50 p-4 rounded-lg border-l-4 border-amber-400">
-                <p className="text-sm text-amber-800 font-medium">
-                  📊 <strong>Control total:</strong> Visualiza tus gastos por categorías, períodos y establecimientos. 
-                  Identifica oportunidades de ahorro y mantén tu presupuesto bajo control.
-                </p>
-              </div>
+              <Button 
+                onClick={scrollToWaitlist}
+              >
+                Organizar mis gastos
+              </Button>
             </div>
             <div className="order-1 lg:order-2">
               <div className="relative pl-8 pt-8 rounded-2xl overflow-hidden bg-neutral-50">
@@ -249,14 +246,53 @@ export default function Home() {
                 <strong> Holded, Xero y Odoo</strong>. Facilita tu declaración de impuestos 
                 y simplifica la gestión contable.
               </p>
-              <div className="bg-purple-50 p-4 rounded-lg border-l-4 border-purple-400">
-                <p className="text-sm text-purple-800 font-medium">
-                  💼 <strong>Para profesionales:</strong> Formatos compatibles con gestorías y asesores fiscales. 
-                  Facilita la preparación de declaraciones y auditorías.
-                </p>
+              <Button 
+                onClick={scrollToWaitlist}
+              >
+                Exportar mis datos
+              </Button>
+            </div>
+          </div>
+
+          {/* Sección 5: Conexión Directa con el Contable */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div className="order-2 lg:order-1 space-y-6">
+              <Badge className="font-medium bg-teal-50 text-teal-700 hover:bg-teal-50">
+                Conexión Profesional
+              </Badge>
+              <h2 className="text-4xl font-bold text-neutral-800">
+                Envía reportes directamente a tu contable
+              </h2>
+              <p className="text-lg text-neutral-600 font-normal">
+                Genera reportes automáticos con todos tus tickets organizados y envíalos 
+                directamente a tu contable con un solo clic. <strong>Simplifica la gestión fiscal</strong> 
+                y ahorra tiempo en la preparación de documentos contables.
+              </p>
+              <Button 
+                onClick={scrollToWaitlist}
+              >
+                Conectar con mi contable
+              </Button>
+            </div>
+            <div className="order-1 lg:order-2">
+              <div className="relative pt-8 pl-8 rounded-2xl overflow-hidden bg-neutral-50">
+                <div className="absolute w-[300px] h-[300px] rounded-full bg-teal-400/30 blur-3xl -top-24 -right-24"></div>
+                <div className="absolute w-[250px] h-[250px] rounded-full bg-emerald-400/20 blur-3xl -bottom-20 -left-20"></div>
+                <img 
+                  src="/static5.png" 
+                  alt="Conexión con contable" 
+                  className="relative z-10 w-full h-auto"
+                />
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Waitlist Form Section */}
+      <div id="waitlist-form">
+        <div className="mx-auto">
+          <WaitlistForm />
         </div>
       </div>
     </div>

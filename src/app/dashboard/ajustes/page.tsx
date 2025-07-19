@@ -57,7 +57,7 @@ export default function AjustesPage() {
 
       const { data, error } = await supabase
         .from("profiles")
-        .select("nombre,apellido,email,telefono,avatar_url,ciudad,nacimiento,plan_id,is_subscribed,auto_ai_analysis")
+        .select("nombre,apellido,email,telefono,avatar_url,ciudad,nacimiento,plan_id,is_subscribed")
         .eq("id", user.id)
         .single();
 
@@ -78,7 +78,7 @@ export default function AjustesPage() {
         setBirthDate(data.nacimiento ?? "");
         // Nota: empresa ya no existe en la BD, mantenemos el campo vacío en la UI
         setCompany("");
-        setAutoAIAnalysis(data.auto_ai_analysis ?? true);
+        // Auto AI analysis is enabled by default
 
         if (data.avatar_url) {
           const { data: publicUrl } = supabase.storage
@@ -140,7 +140,7 @@ export default function AjustesPage() {
       telefono: phone,
       ciudad: city,
       nacimiento: birthDate,
-      auto_ai_analysis: autoAIAnalysis,
+      // auto_ai_analysis removed
       // Nota: empresa eliminado porque ya no existe en la BD
       ...(avatarPath && { avatar_url: avatarPath }),
     };
@@ -203,7 +203,6 @@ export default function AjustesPage() {
         <div className="grid grid-cols-[350px_1fr] gap-10 items-start">
           <div className="space-y-1">
             <h2 className="text-lg font-semibold flex items-center gap-2">
-              <Brain className="w-5 h-5 text-blue-600" />
               Análisis con IA
             </h2>
             <p className="text-sm text-neutral-500">Configura el análisis automático de tus tickets con inteligencia artificial</p>
@@ -221,13 +220,6 @@ export default function AjustesPage() {
                 onCheckedChange={setAutoAIAnalysis}
               />
             </div>
-            {autoAIAnalysis && (
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm text-blue-700">
-                  ✨ El análisis automático está activado. Cada ticket que subas será analizado automáticamente para generar una descripción y categorizar el tipo de negocio.
-                </p>
-              </div>
-            )}
           </div>
         </div>
 

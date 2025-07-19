@@ -68,8 +68,9 @@ export async function GET(request: NextRequest) {
 
     console.log('📊 [DEBUG_PDF] Data for PDF generation:', JSON.stringify(mindeeData, null, 2));
 
-    // Generar PDF
-    const pdfResult = await generatePdfWithPuppeteer(mindeeData, receipt.user_id);
+    // Generar PDF con la imagen del recibo
+    const receiptImageUrl = receipt.url_imagen || receipt.url_archivo;
+    const pdfResult = await generatePdfWithPuppeteer(mindeeData, receipt.user_id, receiptImageUrl);
 
     if (!pdfResult.success) {
       return NextResponse.json(

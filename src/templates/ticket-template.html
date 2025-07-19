@@ -11,6 +11,7 @@
             background-color: #ffffff;
             color: #333;
             -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
             font-size: 12px;
         }
 
@@ -225,6 +226,26 @@
             padding: 1px 3px;
             border-radius: 2px;
         }
+
+        .receipt-image-section {
+            margin: 20px 0;
+            padding: 15px 0;
+            border-top: 1px dashed #ccc;
+            text-align: center;
+        }
+
+        .receipt-image-container {
+            margin: 10px 0;
+            text-align: center;
+        }
+
+        .receipt-image {
+            max-width: 100%;
+            max-height: 300px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
     </style>
 </head>
 <body>
@@ -251,8 +272,8 @@
             {{#if document_type}}
             <div><span class="badge">{{document_type}}</span></div>
             {{/if}}
-            {{#if categoria}}
-            <div>Categoría: <span class="badge">{{categoria}}</span></div>
+            {{#if cuenta_contable}}
+            <div>Cuenta Contable: <span class="badge">{{cuenta_contable}}</span></div>
             {{/if}}
         </div>
 
@@ -298,6 +319,16 @@
             <div class="payment-method">{{payment_method}}</div>
         </div>
         {{/unless}}
+        {{/if}}
+
+        <!-- Imagen del recibo original -->
+        {{#if receipt_image_url}}
+        <div class="receipt-image-section">
+            <div class="section-title">Imagen del Recibo Original</div>
+            <div class="receipt-image-container">
+                <img src="{{receipt_image_url}}" alt="Recibo original" class="receipt-image" />
+            </div>
+        </div>
         {{/if}}
 
         <!-- Mensaje de agradecimiento -->

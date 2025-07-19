@@ -23,12 +23,12 @@ const plans = [
   {
     key: "basic",
     name: "Básico",
-    description: "Plan gratuito con 5 recibos mensuales incluidos. Perfecto para empezar.",
+    description: "Plan gratuito perfecto para empezar. Incluye las funcionalidades esenciales.",
     prices: { monthly: 0, yearly: 0 },
     features: {
-      users: "1 miembro",
-      receipts: "5 recibos / mes",
-      sync: "Sincronización básica",
+      users: "1 usuario",
+      receipts: "10 recibos / mes",
+      sync: "Exportación básica",
       support: "Soporte por email",
     },
     popular: false,
@@ -36,39 +36,53 @@ const plans = [
   {
     key: "pro",
     name: "Pro",
-    description: "Plan profesional con 100 recibos mensuales. Ideal para pequeñas y medianas empresas.",
-    prices: { monthly: 19.99, yearly: 19.99 * 12 - 2 * 19.99 /* 2 meses gratis */ },
+    description: "Plan profesional con integraciones avanzadas. Ideal para pequeñas empresas.",
+    prices: { monthly: 24.99, yearly: 249.90 },
     features: {
       users: "5 miembros",
-      receipts: "100 recibos / mes",
+      receipts: "150 recibos / mes",
       sync: "Sync con Holded / Xero",
       support: "Soporte prioritario",
+      ai: "Análisis avanzado de IA",
+      whatsapp: "Subida desde WhatsApp",
+      accountant: "Conexión con contable",
     },
     popular: true,
   },
   {
-    key: "unlimited",
-    name: "Unlimited",
-    description: "Plan sin límites con 2000 recibos mensuales. Para empresas que necesitan máxima capacidad.",
-    prices: { monthly: 49.99, yearly: 49.99 * 12 - 2 * 49.99 },
+    key: "ultimate",
+    name: "Ultimate",
+    description: "Plan ultimate con 1000 recibos mensuales. Para empresas que necesitan máxima capacidad.",
+    prices: { monthly: 149.99, yearly: 1499.90 },
     features: {
       users: "Miembros ilimitados",
-      receipts: "2000 recibos / mes",
+      receipts: "1000 recibos / mes",
       sync: "Sync con cualquier ERP",
       support: "Soporte premium 24/7",
+      ai: "Análisis avanzado de IA",
+      api: "API personalizada",
+      reports: "Reportes avanzados",
+      whatsapp: "Subida desde WhatsApp",
+      accountant: "Conexión con contable",
     },
     popular: false,
   },
   {
     key: "enterprise",
-    name: "Empresarial",
-    description: "Solución personalizada para empresas con grandes volúmenes de documentos.",
-    prices: { monthly: 0, yearly: 0 }, // Precio personalizado
+    name: "Enterprise",
+    description: "Solución empresarial para grandes volúmenes de documentos y equipos grandes.",
+    prices: { monthly: 499.99, yearly: 4999.90 },
     features: {
       users: "Usuarios ilimitados",
-      receipts: "Recibos ilimitados",
+      receipts: "5000 recibos / mes",
       sync: "Integración dedicada",
       support: "Soporte premium 24/7",
+      ai: "Análisis avanzado de IA",
+      whatsapp: "Subida desde WhatsApp",
+      accountant: "Conexión con contable",
+      api: "API personalizada",
+      reports: "Reportes avanzados",
+      dedicated: "Soporte dedicado",
     },
     popular: false,
     isEnterprise: true,
@@ -80,6 +94,12 @@ const featureKeys = [
   { key: "receipts", label: "Recibos" },
   { key: "sync", label: "Sincronización" },
   { key: "support", label: "Soporte" },
+  { key: "ai", label: "IA Avanzada" },
+  { key: "whatsapp", label: "WhatsApp" },
+  { key: "accountant", label: "Contable" },
+  { key: "api", label: "API" },
+  { key: "reports", label: "Reportes" },
+  { key: "dedicated", label: "Soporte Dedicado" },
 ] as const;
 
 // Mapeo de planes a price IDs de Stripe
@@ -88,9 +108,9 @@ const PLAN_TO_PRICE: Record<string, { monthly: string; yearly: string }> = {
     monthly: STRIPE_PRICES.pro.monthly,
     yearly: STRIPE_PRICES.pro.yearly,
   },
-  unlimited: {
-    monthly: STRIPE_PRICES.unlimited.monthly,
-    yearly: STRIPE_PRICES.unlimited.yearly,
+  ultimate: {
+    monthly: STRIPE_PRICES.ultimate.monthly,
+    yearly: STRIPE_PRICES.ultimate.yearly,
   },
 };
 
@@ -133,16 +153,16 @@ export default function PricingPage() {
     }
     
     // Determinar jerarquía de planes
-    const planOrder = { 'basic': 0, 'pro': 1, 'unlimited': 2 };
+    const planOrder = { 'basic': 0, 'pro': 1, 'ultimate': 2 };
     const currentOrder = planOrder[currentPlan as keyof typeof planOrder] || 0;
     const targetOrder = planOrder[planKey as keyof typeof planOrder] || 0;
     
     if (targetOrder > currentOrder) {
       // Upgrade
-      return isUpgradePrice ? 'Hacer Upgrade (30€)' : 'Elegir Plan';
+      return 'Elegir Plan';
     } else if (targetOrder < currentOrder) {
       // Downgrade
-      const planNames = { 'basic': 'Básico', 'pro': 'Pro', 'unlimited': 'Unlimited' };
+      const planNames = { 'basic': 'Básico', 'pro': 'Pro', 'ultimate': 'Ultimate' };
       return `Bajar a ${planNames[planKey as keyof typeof planNames]}`;
     } else {
       return 'Elegir Plan';
@@ -310,9 +330,9 @@ export default function PricingPage() {
               'Pro': 'pro', 
               'Pro Mensual': 'pro',
               'Pro Anual': 'pro',
-              'Unlimited': 'unlimited',
-              'Unlimited Mensual': 'unlimited',
-              'Unlimited Anual': 'unlimited'
+              'Ultimate': 'ultimate',
+              'Ultimate Mensual': 'ultimate',
+              'Ultimate Anual': 'ultimate'
             };
             const mappedPlan = planNameMap[plan.nombre] || 'basic';
             console.log('✅ Current plan detected:', mappedPlan, 'from DB plan:', plan.nombre);
@@ -543,14 +563,8 @@ export default function PricingPage() {
       {/* Tarjetas de planes principales */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
         {plans.filter(plan => plan.key !== 'enterprise').map((plan) => {
-          let price = cycle === "monthly" ? plan.prices.monthly : plan.prices.yearly;
+          let price: number = cycle === "monthly" ? plan.prices.monthly : plan.prices.yearly;
           let isUpgradePrice = false;
-          
-          // Precio especial para upgrade de Pro a Unlimited
-          if (plan.key === 'unlimited' && currentPlan === 'pro' && cycle === 'monthly') {
-            price = 30; // 30€ primer mes
-            isUpgradePrice = true;
-          }
 
           return (
             <div
@@ -588,12 +602,16 @@ export default function PricingPage() {
                 )}
 
                 <ul className="space-y-1 text-sm flex-1">
-                  {featureKeys.map((fk) => (
-                    <li key={fk.key} className="flex items-center gap-2">
-                      <span className="text-green-600">✓</span>
-                      {plan.features[fk.key]}
-                    </li>
-                  ))}
+                  {featureKeys.map((fk) => {
+                    const feature = plan.features[fk.key as keyof typeof plan.features];
+                    if (!feature) return null;
+                    return (
+                      <li key={fk.key} className="flex items-center gap-2">
+                        <span className="text-green-600">✓</span>
+                        {feature}
+                      </li>
+                    );
+                  })}
                 </ul>
 
                 {/* Botones con skeleton loader */}

@@ -17,9 +17,9 @@ const PLAN_KEY_MAP: Record<string, string> = {
   "Pro": "pro",
   "Pro Mensual": "pro",
   "Pro Anual": "pro", 
-  "Unlimited": "unlimited",
-  "Unlimited Mensual": "unlimited",
-  "Unlimited Anual": "unlimited",
+  "Ultimate": "ultimate",
+  "Ultimate Mensual": "ultimate",
+  "Ultimate Anual": "ultimate",
 };
 
 const gradientBorder =
@@ -111,7 +111,7 @@ export function PlanStatus() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold text-neutral-900">Estado del Plan</h2>
         
-        {key === "pro" || key === "unlimited" ? (
+        {key === "pro" || key === "ultimate" ? (
           <div className={`p-[2px] rounded-full ${gradientBorder}`}>
             <span className="block bg-white rounded-full py-1 px-3 text-xs font-medium capitalize">
               {info.name}

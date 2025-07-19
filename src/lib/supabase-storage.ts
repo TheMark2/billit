@@ -14,6 +14,32 @@ export interface UploadImageResult {
 }
 
 /**
+ * Asegura que el bucket de imágenes originales existe
+ */
+export async function ensureOriginalImagesBucket(): Promise<void> {
+  try {
+    console.log('🔧 [STORAGE] Verificando bucket "original-receipts"...');
+    
+    // Intentar crear el bucket si no existe
+    const { error } = await supabaseService.storage.createBucket('original-receipts', {
+      public: false, // Bucket privado para mayor seguridad
+      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+      fileSizeLimit: 10 * 1024 * 1024 // 10MB
+    });
+    
+    if (error && !error.message.includes('already exists')) {
+      console.error('❌ [STORAGE] Error creando bucket:', error);
+    } else if (error && error.message.includes('already exists')) {
+      console.log('✅ [STORAGE] Bucket "original-receipts" ya existe');
+    } else {
+      console.log('✅ [STORAGE] Bucket "original-receipts" creado exitosamente');
+    }
+  } catch (error) {
+    console.error('💥 [STORAGE] Error asegurando bucket:', error);
+  }
+}
+
+/**
  * Sube una imagen original a Supabase Storage
  */
 export async function uploadOriginalImage(
@@ -23,10 +49,23 @@ export async function uploadOriginalImage(
   fileName?: string
 ): Promise<UploadImageResult> {
   try {
+    console.log('🔄 [STORAGE] Iniciando subida de imagen original:', {
+      userId,
+      receiptId,
+      fileName,
+      fileSize: file instanceof File ? file.size : file.length,
+      fileType: file instanceof File ? file.type : 'Buffer'
+    });
+
+    // Asegurar que el bucket existe antes de subir
+    await ensureOriginalImagesBucket();
+
     // Generar nombre de archivo único
     const timestamp = Date.now();
     const fileExtension = fileName ? fileName.split('.').pop() : 'jpg';
     const filePath = `${userId}/${receiptId}_${timestamp}.${fileExtension}`;
+
+    console.log('📁 [STORAGE] Ruta de archivo generada:', filePath);
 
     // Determinar el tipo de contenido
     let contentType = 'image/jpeg';
@@ -38,7 +77,10 @@ export async function uploadOriginalImage(
       if (fileName.toLowerCase().includes('.webp')) contentType = 'image/webp';
     }
 
+    console.log('🏷️ [STORAGE] Content-Type determinado:', contentType);
+
     // Subir archivo a Supabase Storage
+    console.log('⬆️ [STORAGE] Subiendo archivo al bucket "original-receipts"...');
     const { data, error } = await supabaseService.storage
       .from('original-receipts')
       .upload(filePath, file, {
@@ -47,17 +89,30 @@ export async function uploadOriginalImage(
       });
 
     if (error) {
-      console.error('Error uploading image to storage:', error);
+      console.error('❌ [STORAGE] Error subiendo imagen:', {
+        message: error.message,
+        details: error,
+        filePath,
+        bucket: 'original-receipts'
+      });
       return {
         success: false,
         error: `Error subiendo imagen: ${error.message}`
       };
     }
 
+    console.log('✅ [STORAGE] Imagen subida exitosamente:', {
+      path: data?.path,
+      fullPath: data?.fullPath,
+      id: data?.id
+    });
+
     // Obtener URL pública (aunque el bucket sea privado, necesitamos la URL para el endpoint)
     const { data: publicUrlData } = supabaseService.storage
       .from('original-receipts')
       .getPublicUrl(filePath);
+
+    console.log('🔗 [STORAGE] URL pública generada:', publicUrlData.publicUrl);
 
     return {
       success: true,
@@ -66,7 +121,13 @@ export async function uploadOriginalImage(
     };
 
   } catch (error) {
-    console.error('Error in uploadOriginalImage:', error);
+    console.error('💥 [STORAGE] Error interno en uploadOriginalImage:', {
+      error: error instanceof Error ? error.message : error,
+      stack: error instanceof Error ? error.stack : undefined,
+      userId,
+      receiptId,
+      fileName
+    });
     return {
       success: false,
       error: 'Error interno al subir imagen'

@@ -18,12 +18,12 @@ export const getStripe = () => {
 // Configuración de precios - REEMPLAZA CON TUS IDs REALES DE STRIPE
 export const STRIPE_PRICES = {
   pro: {
-    monthly: 'price_1RiOAYERxI6iQwqiH8zyLJ8P', // Sin "trial" porque se configura dinámicamente
-    yearly: 'price_1RiOElERxI6iQwqiziVsAUqo',   // Sin "trial" porque se configura dinámicamente
+    monthly: 'price_1Rlz6SERxI6iQwqij56JD9XF',
+    yearly: 'price_1Rlz7QERxI6iQwqiMcERcufk',
   },
-  unlimited: {
-    monthly: 'price_1RiOBvERxI6iQwqiTHaILsjG',
-    yearly: 'price_1RiOEPERxI6iQwqiosO912er',
+  ultimate: {
+    monthly: 'price_1Rlz88ERxI6iQwqiMZ4dOzYV',
+    yearly: 'price_1RlzApERxI6iQwqi049q8VDZ',
   },
 } as const;
 
@@ -32,63 +32,61 @@ export const PLAN_CONFIG = {
   basic: {
     name: 'Básico',
     limits: {
-      receipts: 5,
+      receipts: 10,
       users: 1,
     },
-    features: ['5 recibos/mes', '1 usuario', 'Soporte email'],
+    features: ['10 recibos/mes', '1 usuario', 'Soporte email'],
     price: 0,
   },
   pro: {
     name: 'Pro',
     limits: {
-      receipts: 100,
+      receipts: 150,
       users: 5,
     },
     features: [
-      '100 recibos/mes', 
+      '150 recibos/mes', 
       '5 usuarios', 
       'Sincronización ERP',
       'Soporte prioritario',
-      '1 mes de prueba gratis'
+      'Análisis avanzado de IA'
     ],
     prices: {
-      monthly: 19.99,
-      yearly: 199.99, // 10 meses al precio de 12
-    },
-    trial: {
-      days: 30, // 1 mes de prueba
+      monthly: 24.99,
+      yearly: 249.90, // ~17% descuento
     },
   },
-  unlimited: {
-    name: 'Unlimited',
+  ultimate: {
+    name: 'Ultimate',
     limits: {
-      receipts: 2000,
+      receipts: 1000,
       users: -1, // Sin límite
     },
     features: [
-      '2000 recibos/mes',
+      '1000 recibos/mes',
       'Usuarios ilimitados',
       'Integraciones avanzadas',
       'Soporte premium 24/7',
-      'API personalizada'
+      'API personalizada',
+      'Reportes avanzados'
     ],
     prices: {
-      monthly: 49.99,
-      yearly: 499.99, // 10 meses al precio de 12
+      monthly: 149.99,
+      yearly: 1499.90, // ~17% descuento
     },
   },
 } as const;
 
 // Mapeo de precios de Stripe a planes de Supabase
 export const STRIPE_TO_SUPABASE_PLAN = {
-  // Pro mensual (con prueba dinámica)
-  'price_1RiOAYERxI6iQwqiH8zyLJ8P': 'Pro Mensual',
-  // Pro anual (con prueba dinámica)
-  'price_1RiOElERxI6iQwqiziVsAUqo': 'Pro Anual',
-  // Unlimited mensual
-  'price_1RiOBvERxI6iQwqiTHaILsjG': 'Unlimited Mensual',
-  // Unlimited anual
-  'price_1RiOEPERxI6iQwqiosO912er': 'Unlimited Anual',
+  // Pro mensual
+  'price_1Rlz6SERxI6iQwqij56JD9XF': 'Pro Mensual',
+  // Pro anual
+  'price_1Rlz7QERxI6iQwqiMcERcufk': 'Pro Anual',
+  // Ultimate mensual
+  'price_1Rlz88ERxI6iQwqiMZ4dOzYV': 'Ultimate Mensual',
+  // Ultimate anual
+  'price_1RlzApERxI6iQwqi049q8VDZ': 'Ultimate Anual',
 } as const;
 
 // Función para obtener el precio de Stripe por plan y período

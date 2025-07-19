@@ -3,7 +3,7 @@ import { generatePdfWithPuppeteer } from '@/lib/pdf-generator';
 
 export async function POST(request: NextRequest) {
   try {
-    const { mindeeData, userId } = await request.json();
+    const { mindeeData, userId, receiptImageUrl } = await request.json();
     
     if (!mindeeData) {
       return NextResponse.json(
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generar el PDF usando la función existente
-    const pdfResult = await generatePdfWithPuppeteer(mindeeData, userId);
+    const pdfResult = await generatePdfWithPuppeteer(mindeeData, userId, receiptImageUrl);
     
     if (!pdfResult.success) {
       return NextResponse.json(

@@ -10,11 +10,55 @@ async function analyzeReceiptWithAI(receiptData: any) {
     const lineItems = receiptData.metadatos?.mindee_data?.line_items || [];
     const total = receiptData.total || 0;
     
-    // Construir prompt para la IA
+    // Construir prompt para la IA con cuentas contables específicas
     const prompt = `
-Analiza este ticket de compra y proporciona:
-1. Una descripción corta (máximo 50 palabras) de la compra
-2. La categoría del negocio (una palabra: Restaurante, Supermercado, Farmacia, Gasolinera, Ropa, Tecnología, Salud, Transporte, Entretenimiento, Servicios, u Otros)
+Analiza este ticket de compra y asigna la cuenta contable correcta según el Plan General Contable español.
+
+MANUAL DE CUENTAS CONTABLES:
+
+**GASTOS OPERATIVOS (Grupo 6):**
+- 600 "Compras" - Mercancías para reventa, materias primas
+- 601 "Compras de materias primas" - Materiales de producción
+- 602 "Compras de otros aprovisionamientos" - Combustibles, repuestos, material de oficina
+- 621 "Arrendamientos y cánones" - Alquileres de locales, equipos
+- 622 "Reparaciones y conservación" - Mantenimiento de equipos, vehículos
+- 623 "Servicios de profesionales independientes" - Asesorías, consultores
+- 624 "Transportes" - Envíos, mensajería, transporte público
+- 625 "Primas de seguros" - Seguros de cualquier tipo
+- 626 "Servicios bancarios" - Comisiones bancarias
+- 627 "Publicidad, propaganda y relaciones públicas" - Marketing, publicidad
+- 628 "Suministros" - Electricidad, agua, gas, teléfono, internet
+- 629 "Otros servicios" - Limpieza, seguridad, otros servicios
+
+**GASTOS DE PERSONAL (Grupo 64):**
+- 640 "Sueldos y salarios" - Nóminas
+- 641 "Indemnizaciones" - Finiquitos, despidos
+- 642 "Seguridad Social a cargo de la empresa" - Cotizaciones SS
+- 649 "Otros gastos sociales" - Formación, seguros empleados
+
+**OTROS GASTOS (Grupo 62):**
+- 623 "Servicios de profesionales independientes" - Asesorías, abogados
+- 624 "Transportes" - Gasolina, peajes, transporte
+- 625 "Primas de seguros" - Seguros vehículos, locales
+- 626 "Servicios bancarios" - Comisiones, gastos bancarios
+- 627 "Publicidad" - Marketing, publicidad online/offline
+- 628 "Suministros" - Luz, agua, gas, teléfono
+- 629 "Otros servicios" - Limpieza, mantenimiento
+
+**GASTOS EXCEPCIONALES:**
+- 678 "Gastos excepcionales" - Multas, sanciones
+
+**EJEMPLOS DE ASIGNACIÓN:**
+- Gasolinera/Combustible → "624 - Transportes"
+- Restaurante/Comida → "629 - Otros servicios" (si es gasto de empresa)
+- Supermercado/Oficina → "602 - Compras de otros aprovisionamientos"
+- Electricidad/Gas → "628 - Suministros"
+- Asesoría/Gestoría → "623 - Servicios de profesionales independientes"
+- Seguro → "625 - Primas de seguros"
+- Publicidad/Marketing → "627 - Publicidad, propaganda y relaciones públicas"
+- Reparación vehículo → "622 - Reparaciones y conservación"
+- Material oficina → "602 - Compras de otros aprovisionamientos"
+- Alquiler local → "621 - Arrendamientos y cánones"
 
 Información del ticket:
 - Proveedor: ${provider}
@@ -22,10 +66,10 @@ Información del ticket:
 - Productos: ${lineItems.map((item: any) => item.description || item.name).join(', ')}
 - Texto extraído: ${textContent.substring(0, 500)}
 
-Responde SOLO en formato JSON:
+Analiza el contenido y asigna la cuenta contable más apropiada. Responde SOLO en formato JSON:
 {
   "descripcion": "descripción corta de la compra",
-  "categoria": "categoría del negocio"
+  "cuenta_contable": "XXX - Nombre de la cuenta contable"
 }
 `;
 
@@ -68,7 +112,7 @@ Responde SOLO en formato JSON:
       }
     } catch (apiError) {
       console.error('Error calling DeepSeek API:', apiError);
-      throw new Error(`DeepSeek API error: ${apiError.message}`);
+      throw new Error(`DeepSeek API error: ${apiError instanceof Error ? apiError.message : String(apiError)}`);
     }
 
       // Limpiar la respuesta de DeepSeek (puede venir con formato markdown)
@@ -105,7 +149,7 @@ Responde SOLO en formato JSON:
           // Si todo falla, usar un objeto predeterminado
           analysis = {
              descripcion: 'Compra procesada automáticamente',
-             categoria: 'Otros'
+             cuenta_contable: '629 - Otros servicios'
            };
            console.log('Usando análisis predeterminado');
          }
@@ -113,34 +157,52 @@ Responde SOLO en formato JSON:
        
        return {
          descripcion: analysis.descripcion || 'Compra procesada automáticamente',
-         categoria: analysis.categoria || 'Otros'
+         cuenta_contable: analysis.cuenta_contable || '629 - Otros servicios'
        };
 
   } catch (error) {
     console.error('Error analyzing receipt with AI:', error);
     
-    // Fallback: análisis básico sin IA
+    // Fallback: análisis básico sin IA con cuentas contables
     const provider = receiptData.proveedor || '';
-    let categoria = 'Otros';
+    let cuenta_contable = '629 - Otros servicios';
     let descripcion = 'Compra procesada';
 
-    // Categorización básica por palabras clave
+    // Asignación de cuentas contables básica por palabras clave
     const providerLower = provider.toLowerCase();
     if (providerLower.includes('restaurante') || providerLower.includes('bar') || providerLower.includes('café')) {
-      categoria = 'Restaurante';
+      cuenta_contable = '629 - Otros servicios';
       descripcion = `Consumo en ${provider}`;
     } else if (providerLower.includes('mercado') || providerLower.includes('super') || providerLower.includes('carrefour') || providerLower.includes('mercadona')) {
-      categoria = 'Supermercado';
+      cuenta_contable = '602 - Compras de otros aprovisionamientos';
       descripcion = `Compra en ${provider}`;
     } else if (providerLower.includes('farmacia')) {
-      categoria = 'Farmacia';
+      cuenta_contable = '602 - Compras de otros aprovisionamientos';
       descripcion = `Compra en farmacia ${provider}`;
-    } else if (providerLower.includes('gasolinera') || providerLower.includes('repsol') || providerLower.includes('cepsa')) {
-      categoria = 'Gasolinera';
+    } else if (providerLower.includes('gasolinera') || providerLower.includes('repsol') || providerLower.includes('cepsa') || providerLower.includes('bp') || providerLower.includes('shell')) {
+      cuenta_contable = '624 - Transportes';
       descripcion = `Repostaje en ${provider}`;
+    } else if (providerLower.includes('electricidad') || providerLower.includes('gas') || providerLower.includes('agua') || providerLower.includes('telefon') || providerLower.includes('internet')) {
+      cuenta_contable = '628 - Suministros';
+      descripcion = `Suministro de ${provider}`;
+    } else if (providerLower.includes('seguro') || providerLower.includes('insurance')) {
+      cuenta_contable = '625 - Primas de seguros';
+      descripcion = `Seguro de ${provider}`;
+    } else if (providerLower.includes('asesor') || providerLower.includes('gestor') || providerLower.includes('abogado') || providerLower.includes('consultor')) {
+      cuenta_contable = '623 - Servicios de profesionales independientes';
+      descripcion = `Servicios profesionales de ${provider}`;
+    } else if (providerLower.includes('alquiler') || providerLower.includes('rent')) {
+      cuenta_contable = '621 - Arrendamientos y cánones';
+      descripcion = `Alquiler de ${provider}`;
+    } else if (providerLower.includes('reparacion') || providerLower.includes('taller') || providerLower.includes('mantenimiento')) {
+      cuenta_contable = '622 - Reparaciones y conservación';
+      descripcion = `Reparación/mantenimiento en ${provider}`;
+    } else if (providerLower.includes('publicidad') || providerLower.includes('marketing') || providerLower.includes('google') || providerLower.includes('facebook')) {
+      cuenta_contable = '627 - Publicidad, propaganda y relaciones públicas';
+      descripcion = `Publicidad/marketing en ${provider}`;
     }
 
-    return { descripcion, categoria };
+    return { descripcion, cuenta_contable };
   }
 }
 
@@ -187,7 +249,7 @@ export async function POST(request: NextRequest) {
     const updatedMetadatos = {
       ...currentReceipt?.metadatos,
       ai_analysis: {
-        business_category: analysis.categoria,
+        accounting_account: analysis.cuenta_contable,
         description: analysis.descripcion,
         confidence: 0.9,
         analyzed_at: new Date().toISOString()
@@ -199,7 +261,7 @@ export async function POST(request: NextRequest) {
       .from('receipts')
       .update({
         notas: analysis.descripcion,
-        categoria_negocio: analysis.categoria,
+        categoria_negocio: analysis.cuenta_contable,
         metadatos: updatedMetadatos
       })
       .eq('id', receiptId);
@@ -216,7 +278,7 @@ export async function POST(request: NextRequest) {
       success: true,
       analysis: {
         descripcion: analysis.descripcion,
-        categoria: analysis.categoria
+        cuenta_contable: analysis.cuenta_contable
       }
     });
 
@@ -281,7 +343,7 @@ export async function PUT(request: NextRequest) {
         const updatedMetadatos = {
           ...currentReceipt?.metadatos,
           ai_analysis: {
-            business_category: analysis.categoria,
+            accounting_account: analysis.cuenta_contable,
             description: analysis.descripcion,
             confidence: 0.9,
             analyzed_at: new Date().toISOString()
@@ -293,7 +355,7 @@ export async function PUT(request: NextRequest) {
           .from('receipts')
           .update({
             notas: analysis.descripcion,
-            categoria_negocio: analysis.categoria,
+            categoria_negocio: analysis.cuenta_contable,
             metadatos: updatedMetadatos
           })
           .eq('id', receiptId);
@@ -306,7 +368,7 @@ export async function PUT(request: NextRequest) {
             success: true, 
             analysis: {
               descripcion: analysis.descripcion,
-              categoria: analysis.categoria
+              cuenta_contable: analysis.cuenta_contable
             }
           });
         }

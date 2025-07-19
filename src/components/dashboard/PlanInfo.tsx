@@ -106,7 +106,7 @@ export function PlanInfo({ className = "" }: { className?: string }) {
       <p className="text-xs text-neutral-500 mt-2">{plan.descripcion}</p>
               <div className="flex items-center justify-between mt-4">
           <p className="text-2xl font-bold text-neutral-900">{plan.precio} <span className="text-sm font-normal text-neutral-500">€/mes</span></p>
-          {plan.nombre === "Unlimited" ? (
+          {plan.nombre === "Ultimate" ? (
             isSubscribed && (
               <Button
                 variant="outline"
